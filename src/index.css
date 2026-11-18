@@ -1,0 +1,126 @@
+/* Sistema visual de EcoSmart AI: papel cálido, verde bosque, terracota y lima. */
+:root {
+  --paper: #f3ede2;
+  --paper-2: #ebe3d4;
+  --card: #fbf8f2;
+  --ink: #1c2a22;
+  --ink-2: #2d3f34;
+  --muted: #6b6a5e;
+  --line: #d9cfbd;
+  --line-2: #c7baa3;
+  --accent: #d9622b;
+  --accent-dark: #b04a1c;
+  --accent-soft: #f6dcc9;
+  --moss: #2f5d46;
+  --moss-soft: #dbe6d6;
+  --lime: #c8e05a;
+  --lime-soft: #eef4c9;
+  --ok: #2f7a4f;
+  --ok-soft: #dcefe0;
+  --warn: #a66a00;
+  --warn-soft: #f8e9c4;
+  --error: #b3261e;
+  --error-soft: #f7dcd8;
+  --info: #285e8a;
+  --info-soft: #dbe8f2;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 26px;
+  --sombra: 0 1px 0 rgba(28, 42, 34, 0.04), 0 14px 40px -18px rgba(28, 42, 34, 0.28);
+
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--paper);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--paper);
+  overflow-x: hidden;
+}
+
+/* Grano de papel sobre toda la interfaz */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .11 0 0 0 0 .16 0 0 0 0 .13 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--moss);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+::selection {
+  background: var(--lime);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
