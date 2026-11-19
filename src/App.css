@@ -4413,3 +4413,93 @@ textarea.input {
 .inst-nums b {
   color: var(--ink);
 }
+
+/* Alertas antifraude */
+.alertas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.alerta-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+  background: var(--card);
+}
+.alerta-card-resuelta {
+  border-left-color: var(--ok);
+}
+.alerta-card-descartada {
+  border-left-color: var(--line-2);
+  opacity: 0.8;
+}
+.alerta-icono {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 800;
+  font-size: 1.4rem;
+}
+.alerta-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.alerta-cab {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.alerta-info p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+.alerta-info small {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.alerta-resolucion {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink-2) !important;
+}
+.alerta-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fila-inactiva td {
+  opacity: 0.6;
+}
+.acciones-fila {
+  white-space: nowrap;
+}
+.input-color {
+  padding: 4px;
+  height: 46px;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .alerta-card {
+    flex-wrap: wrap;
+  }
+  .alerta-acciones {
+    flex-direction: row;
+    width: 100%;
+  }
+}

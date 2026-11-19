@@ -149,7 +149,7 @@ export function PuntosCampus() {
       <Encabezado titulo="Puntos de reciclaje" descripcion="Encuentra el punto más cercano y revisa qué materiales recibe." />
       <div className="filtros" role="group" aria-label="Filtrar por categoría">
         <button type="button" className={`filtro ${filtro === 'todas' ? 'activo' : ''}`} onClick={() => setFiltro('todas')}>Todas</button>
-        {db.categorias.map((c) => (
+        {db.categorias.filter((c) => c.activa).map((c) => (
           <button key={c.id} type="button" className={`filtro ${filtro === c.id ? 'activo' : ''}`} onClick={() => setFiltro(c.id)}>
             {c.nombre}
           </button>

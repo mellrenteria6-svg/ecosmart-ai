@@ -12,15 +12,19 @@ import {
   desactivarAsignacion,
   entregarCanje,
   guardarPunto,
+  crearCategoria,
+  eliminarCategoria,
   guardarInstitucion,
   guardarRecompensa,
+  reactivarCategoria,
+  resolverAlerta,
   hoyIso,
   nombreInstitucion,
   realizarSorteo,
   saldoConfirmado,
   useStore,
 } from '../data/store'
-import type { Canje, CategoriaResiduo, EstadoPunto, Institucion, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
+import type { AlertaFraude, Canje, CategoriaResiduo, EstadoPunto, Institucion, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
 import { Alerta, Badge, Campo, Encabezado, EstadoBadge, Modal, Stat, Vacio, useAccion } from '../components/ui'
 import { ChipCategoria, MapaCampus, Qr, enlaceQr } from '../components/Visual'
 import { ETIQUETA_CANJE, ETIQUETA_PUNTO, ETIQUETA_RECICLAJE, ETIQUETA_ROL, fmtFecha, fmtFechaHora, fmtNumero, fmtPct, hace } from '../lib/formato'
@@ -59,6 +63,11 @@ export function Dashboard() {
   return (
     <div className="pagina">
       <Encabezado titulo="Dashboard" descripcion="Indicadores conciliables con los registros de origen." />
+      {db.alertas.some((x) => x.estado === 'abierta') && (
+        <Alerta tono="warn" titulo={`${db.alertas.filter((x) => x.estado === 'abierta').length} alertas antifraude abiertas`}>
+          <a href="#/admin/alertas">Revisar alertas →</a>
+        </Alerta>
+      )}
       <div className="filtros-panel">
         <Campo etiqueta="Periodo">
           {(id) => (
@@ -279,7 +288,7 @@ export function AdminPuntos({ usuario }: { usuario: Usuario }) {
             <fieldset className="fieldset">
               <legend>Categorías aceptadas</legend>
               <div className="opciones-cat">
-                {db.categorias.map((c) => (
+                {db.categorias.filter((c) => c.activa).map((c) => (
                   <label key={c.id} className={`opcion-cat ${editando.categorias.includes(c.id) ? 'sel' : ''}`}>
                     <input
                       type="checkbox"
@@ -360,6 +369,8 @@ export function AdminPuntos({ usuario }: { usuario: Usuario }) {
 export function AdminCategorias({ usuario }: { usuario: Usuario }) {
   const { db } = useStore()
   const [sel, setSel] = useState<CategoriaResiduo | null>(null)
+  const [nueva, setNueva] = useState<Omit<CategoriaResiduo, 'id' | 'version' | 'activa'> | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [cfg, setCfg] = useState(db.config)
   const [okCfg, setOkCfg] = useState(false)
   const { error, setError, ejecutar } = useAccion()
@@ -367,7 +378,24 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
 
   return (
     <div className="pagina">
-      <Encabezado titulo="Categorías y reglas" descripcion="Los cambios aplican solo a registros nuevos; cada versión queda auditada." />
+      <Encabezado
+        titulo="Categorías y reglas"
+        descripcion="Los cambios aplican solo a registros nuevos; cada versión queda auditada."
+        acciones={
+          <button
+            type="button"
+            className="btn btn-tinta"
+            onClick={() => {
+              setError(null)
+              setNueva({ nombre: '', descripcion: '', unidad: 'unidad', puntosPorUnidad: 5, minimo: 1, maximo: 10, color: '#3d7a5c', impacto: { co2Kg: 0, aguaL: 0, energiaKwh: 0 } })
+            }}
+          >
+            + Nueva categoría
+          </button>
+        }
+      />
+      {aviso && <Alerta tono="ok">{aviso}</Alerta>}
+      {error && !sel && !nueva && <Alerta tono="error">{error}</Alerta>}
       <div className="tabla-envoltura">
         <table className="tabla">
           <thead>
@@ -377,12 +405,13 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
               <th className="num">Pts / unidad</th>
               <th className="num">Límites</th>
               <th className="num">Versión</th>
+              <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {db.categorias.map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className={c.activa ? '' : 'fila-inactiva'}>
                 <td>
                   <ChipCategoria nombre={c.nombre} color={c.color} />
                   {c.descripcion && (
@@ -396,8 +425,41 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
                 <td className="num">{c.puntosPorUnidad}</td>
                 <td className="num">{c.minimo} – {c.maximo}</td>
                 <td className="num">v{c.version}</td>
-                <td className="num">
-                  <button type="button" className="btn btn-fantasma btn-sm" onClick={() => { setError(null); setSel({ ...c }) }}>Editar</button>
+                <td>{c.activa ? <Badge tono="ok">Activa</Badge> : <Badge>Eliminada</Badge>}</td>
+                <td className="num acciones-fila">
+                  {c.activa ? (
+                    <>
+                      <button type="button" className="btn btn-fantasma btn-sm" onClick={() => { setError(null); setSel({ ...c }) }}>Editar</button>
+                      <button
+                        type="button"
+                        className="btn btn-fantasma btn-sm txt-error"
+                        onClick={async () => {
+                          const puntos = db.puntos.filter((p) => p.categorias.includes(c.id)).length
+                          if (!confirm(`¿Eliminar "${c.nombre}"? Dejará de aceptarse${puntos ? ` en ${puntos} punto(s)` : ''}. Los registros anteriores se conservan.`)) return
+                          setAviso(null)
+                          const r = await ejecutar(() => eliminarCategoria(usuario.id, c.id))
+                          if (r) setAviso(`"${c.nombre}" eliminada. Su historial se conserva y puedes reactivarla cuando quieras.`)
+                        }}
+                      >
+                        Eliminar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-linea btn-sm"
+                      onClick={async () => {
+                        setAviso(null)
+                        const r = await ejecutar(async () => {
+                          await reactivarCategoria(usuario.id, c.id)
+                          return true
+                        })
+                        if (r) setAviso(`"${c.nombre}" reactivada. Agrégala a los puntos que deban recibirla desde "Puntos y QR".`)
+                      }}
+                    >
+                      Reactivar
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -430,6 +492,44 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
         </form>
         <p className="nota">Retención de fotos: {db.config.diasRetencionFotos} días · Universidades y dominios de correo: <a href="#/admin/instituciones">gestionar</a></p>
       </section>
+
+      <Modal abierto={!!nueva} titulo="Nueva categoría" onCerrar={() => setNueva(null)}>
+        {nueva && (
+          <form
+            className="form"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              setAviso(null)
+              const c = await ejecutar(() => crearCategoria(usuario.id, nueva))
+              if (c) {
+                setNueva(null)
+                setAviso(`"${c.nombre}" creada. Agrégala a los puntos que deban recibirla desde "Puntos y QR".`)
+              }
+            }}
+          >
+            <div className="form-2 form-2-emoji">
+              <Campo etiqueta="Color">{(id) => <input id={id} className="input input-color" type="color" value={nueva.color} onChange={(e) => setNueva({ ...nueva, color: e.target.value })} />}</Campo>
+              <Campo etiqueta="Nombre">{(id) => <input id={id} className="input" value={nueva.nombre} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} placeholder="Ej.: Pilas y baterías" required />}</Campo>
+            </div>
+            <Campo etiqueta="Qué incluye" ayuda="Se muestra al usuario al reciclar.">
+              {(id, d) => <input id={id} aria-describedby={d} className="input" value={nueva.descripcion ?? ''} onChange={(e) => setNueva({ ...nueva, descripcion: e.target.value })} />}
+            </Campo>
+            <div className="form-2">
+              <Campo etiqueta="Unidad de medida">{(id) => <input id={id} className="input" value={nueva.unidad} onChange={(e) => setNueva({ ...nueva, unidad: e.target.value })} />}</Campo>
+              <Campo etiqueta="Puntos por unidad">{(id) => <input id={id} className="input" type="number" step="0.5" value={nueva.puntosPorUnidad} onChange={(e) => setNueva({ ...nueva, puntosPorUnidad: Number(e.target.value) })} />}</Campo>
+            </div>
+            <div className="form-2">
+              <Campo etiqueta="Mínimo por registro">{(id) => <input id={id} className="input" type="number" step="0.5" value={nueva.minimo} onChange={(e) => setNueva({ ...nueva, minimo: Number(e.target.value) })} />}</Campo>
+              <Campo etiqueta="Máximo por registro">{(id) => <input id={id} className="input" type="number" step="0.5" value={nueva.maximo} onChange={(e) => setNueva({ ...nueva, maximo: Number(e.target.value) })} />}</Campo>
+            </div>
+            <Alerta tono="info">
+              La IA aún no conoce esta categoría: el usuario podrá elegirla a mano y su registro irá a revisión del recolector hasta que se entrene el modelo.
+            </Alerta>
+            {error && <Alerta tono="error">{error}</Alerta>}
+            <button className="btn btn-tinta btn-bloque">Crear categoría</button>
+          </form>
+        )}
+      </Modal>
 
       <Modal abierto={!!sel} titulo={`Editar ${sel?.nombre ?? ''}`} onCerrar={() => setSel(null)}>
         {sel && (
@@ -868,6 +968,105 @@ export function AdminInstituciones({ usuario }: { usuario: Usuario }) {
             </label>
             {error && <Alerta tono="error">{error}</Alerta>}
             <button className="btn btn-tinta btn-bloque">Guardar</button>
+          </form>
+        )}
+      </Modal>
+    </div>
+  )
+}
+
+// RF26 – Alertas antifraude: informan, no sancionan automáticamente
+const ETIQUETA_ALERTA: Record<AlertaFraude['estado'], string> = { abierta: 'Abierta', resuelta: 'Resuelta', descartada: 'Descartada' }
+
+export function AdminAlertas({ usuario }: { usuario: Usuario }) {
+  const { db } = useStore()
+  const [filtro, setFiltro] = useState<'abierta' | 'cerradas' | 'todas'>('abierta')
+  const [sel, setSel] = useState<{ alerta: AlertaFraude; estado: 'resuelta' | 'descartada' } | null>(null)
+  const [nota, setNota] = useState('')
+  const { error, setError, ejecutar } = useAccion()
+  const lista = [...db.alertas]
+    .filter((a) => filtro === 'todas' || (filtro === 'abierta' ? a.estado === 'abierta' : a.estado !== 'abierta'))
+    .sort((a, b) => b.creadoEn - a.creadoEn)
+  const abiertas = db.alertas.filter((a) => a.estado === 'abierta').length
+
+  return (
+    <div className="pagina">
+      <Encabezado
+        titulo="Alertas antifraude"
+        descripcion="El sistema marca comportamientos sospechosos. Una alerta no sanciona a nadie: revisa la evidencia y decide."
+      />
+      <div className="tabs" role="tablist" aria-label="Estado">
+        <button role="tab" aria-selected={filtro === 'abierta'} className={filtro === 'abierta' ? 'activo' : ''} onClick={() => setFiltro('abierta')}>
+          Abiertas <span className="tab-num">{abiertas}</span>
+        </button>
+        <button role="tab" aria-selected={filtro === 'cerradas'} className={filtro === 'cerradas' ? 'activo' : ''} onClick={() => setFiltro('cerradas')}>Resueltas</button>
+        <button role="tab" aria-selected={filtro === 'todas'} className={filtro === 'todas' ? 'activo' : ''} onClick={() => setFiltro('todas')}>Todas</button>
+      </div>
+
+      {lista.length === 0 ? (
+        <Vacio titulo={filtro === 'abierta' ? 'No hay alertas abiertas' : 'Sin alertas'}>Las reglas revisan fotos repetidas, ráfagas de registros y cantidades en el máximo permitido.</Vacio>
+      ) : (
+        <ul className="alertas">
+          {lista.map((a) => {
+            const u = db.usuarios.find((x) => x.id === a.usuarioId)
+            const r = a.reciclajeId ? db.reciclajes.find((x) => x.id === a.reciclajeId) : undefined
+            const historial = db.alertas.filter((x) => x.usuarioId === a.usuarioId).length
+            const quien = a.resueltoPor ? db.usuarios.find((x) => x.id === a.resueltoPor)?.nombre : undefined
+            return (
+              <li key={a.id} className={`alerta-card alerta-card-${a.estado}`}>
+                {r?.foto ? <img src={r.foto} alt="Foto del registro relacionado" className="miniatura miniatura-lg" /> : <span className="alerta-icono" aria-hidden="true">!</span>}
+                <div className="alerta-info">
+                  <div className="alerta-cab">
+                    <b>{a.regla}</b>
+                    <Badge tono={a.estado === 'abierta' ? 'warn' : a.estado === 'resuelta' ? 'ok' : 'neutral'}>{ETIQUETA_ALERTA[a.estado]}</Badge>
+                  </div>
+                  <p>{a.evidencia}</p>
+                  <small>
+                    {u ? `${u.nombre} · ${u.correo || nombreInstitucion(db, u.institucionId)}` : 'Usuario'} · {fmtFechaHora(a.creadoEn)}
+                    {historial > 1 && ` · ${historial} alertas de este usuario`}
+                  </small>
+                  {a.resolucion && (
+                    <small className="alerta-resolucion">
+                      {ETIQUETA_ALERTA[a.estado]} por {quien ?? 'administración'}: {a.resolucion}
+                    </small>
+                  )}
+                </div>
+                {a.estado === 'abierta' && (
+                  <div className="alerta-acciones">
+                    <button type="button" className="btn btn-tinta btn-sm" onClick={() => { setError(null); setNota(''); setSel({ alerta: a, estado: 'resuelta' }) }}>Resolver</button>
+                    <button type="button" className="btn btn-fantasma btn-sm" onClick={() => { setError(null); setNota(''); setSel({ alerta: a, estado: 'descartada' }) }}>Descartar</button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <Modal abierto={!!sel} titulo={sel?.estado === 'resuelta' ? 'Resolver alerta' : 'Descartar alerta'} onCerrar={() => setSel(null)}>
+        {sel && (
+          <form
+            className="form"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const ok = await ejecutar(async () => {
+                await resolverAlerta(usuario.id, sel.alerta.id, sel.estado, nota)
+                return true
+              })
+              if (ok) setSel(null)
+            }}
+          >
+            <p className="nota">
+              <b>{sel.alerta.regla}:</b> {sel.alerta.evidencia}
+            </p>
+            <Campo
+              etiqueta={sel.estado === 'resuelta' ? 'Qué se hizo' : 'Por qué se descarta'}
+              ayuda={sel.estado === 'resuelta' ? 'Ej.: se habló con el usuario; se rechazó el registro; se bloqueó la cuenta desde Usuarios.' : 'Ej.: era una foto de otro residuo; el usuario recicló un lote grande real.'}
+            >
+              {(id, d) => <textarea id={id} aria-describedby={d} className="input" rows={3} value={nota} onChange={(e) => setNota(e.target.value)} required />}
+            </Campo>
+            {error && <Alerta tono="error">{error}</Alerta>}
+            <button className="btn btn-tinta btn-bloque">{sel.estado === 'resuelta' ? 'Marcar como resuelta' : 'Descartar alerta'}</button>
           </form>
         )}
       </Modal>

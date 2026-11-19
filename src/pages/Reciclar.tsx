@@ -397,7 +397,7 @@ function PasoIa({
   const [cantidad, setCantidad] = useState(1)
   const [clave] = useState(nuevaClaveIdempotencia) // misma clave en cada reintento
   const { error, cargando, ejecutar } = useAccion()
-  const aceptadas = db.categorias.filter((c) => punto.categorias.includes(c.id))
+  const aceptadas = db.categorias.filter((c) => c.activa && punto.categorias.includes(c.id))
 
   useEffect(() => {
     if (ia) return

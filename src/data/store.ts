@@ -224,6 +224,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener('offline', () => emitir({}))
 }
 
+// Desarrollo: si cambia este archivo, se recarga la página completa en vez de reemplazar el
+// módulo en caliente; así no quedan dos copias del estado y la sesión se conserva.
+;(import.meta as { hot?: { accept: (cb: () => void) => void } }).hot?.accept(() => location.reload())
+
 export function restablecerDemo() {
   if (MODO_SERVIDOR) return
   const nueva = crearDbSemilla()
@@ -736,7 +740,7 @@ function registrarReciclaje__local(datos: DatosReciclaje): { reciclaje: Reciclaj
     transaccion((d) =>
       crearAlerta(d, {
         regla: 'Foto duplicada',
-        evidencia: `Intento de registrar una foto igual o casi idéntica a la del registro ${repetida.id}${repetida.usuarioId === datos.usuarioId ? ' (del mismo usuario)' : ' (de otro usuario)'}.`,
+        evidencia: `Intentó registrar una foto igual o casi idéntica a la de un reciclaje ${repetida.usuarioId === datos.usuarioId ? 'suyo' : 'de otro usuario'} del ${new Date(repetida.creadoEn).toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'short' })} en ${d.puntos.find((p) => p.id === repetida.puntoId)?.nombre ?? 'otro punto'}.`,
         usuarioId: datos.usuarioId,
         reciclajeId: repetida.id,
       }),
@@ -1223,22 +1227,22 @@ function crearCategoria__local(adminId: string, datos: Omit<CategoriaResiduo, 'i
   })
 }
 
-/** Borra la categoría si nunca se usó; si tiene registros, la desactiva para conservar el historial. */
+/**
+ * "Eliminar" una categoría la retira del sistema: se desactiva, sale de todos los puntos y deja
+ * de aceptarse en nuevos reciclajes. No se borra para conservar el historial y la auditoría (RN10).
+ */
 function eliminarCategoria__local(adminId: string, id: string) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const c = d.categorias.find((x) => x.id === id)
     if (!c) throw new ApiError('Categoría no encontrada.')
-    const usada = d.reciclajes.some((r) => r.categoriaId === id || r.categoriaIa === id)
+    if (!c.activa) throw new ApiError('La categoría ya está eliminada.')
+    if (d.categorias.filter((x) => x.activa).length <= 1) throw new ApiError('Debe quedar al menos una categoría activa.')
+    const enPuntos = d.puntos.filter((p) => p.categorias.includes(id)).length
     d.puntos.forEach((p) => (p.categorias = p.categorias.filter((x) => x !== id)))
-    if (usada) {
-      c.activa = false
-      auditar(d, adminId, 'Desactivar categoría', 'CATEGORIA_RESIDUO', c.id, `${c.nombre} tiene registros: se desactiva y se conserva el historial.`)
-      return 'desactivada' as const
-    }
-    d.categorias = d.categorias.filter((x) => x.id !== id)
-    auditar(d, adminId, 'Eliminar categoría', 'CATEGORIA_RESIDUO', c.id, c.nombre)
-    return 'eliminada' as const
+    c.activa = false
+    auditar(d, adminId, 'Eliminar categoría', 'CATEGORIA_RESIDUO', c.id, `${c.nombre}: retirada de ${enPuntos} puntos; el historial se conserva.`)
+    return { puntosAfectados: enPuntos }
   })
 }
 

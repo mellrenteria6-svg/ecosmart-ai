@@ -27,6 +27,7 @@ const MENU: Record<Rol, { href: string; texto: string }[]> = {
     { href: '#/admin/recompensas', texto: 'Recompensas' },
     { href: '#/admin/entregas', texto: 'Entregas' },
     { href: '#/admin/reportes', texto: 'Reportes' },
+    { href: '#/admin/alertas', texto: 'Alertas' },
     { href: '#/admin/usuarios', texto: 'Usuarios' },
     { href: '#/admin/instituciones', texto: 'Universidades' },
     { href: '#/admin/auditoria', texto: 'Auditoría' },
