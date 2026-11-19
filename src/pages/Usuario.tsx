@@ -176,12 +176,18 @@ export function PuntosCampus() {
             <p className="kicker">Detalle del punto</p>
             <h2>{punto.nombre}</h2>
             <p className="encabezado-desc">{punto.ubicacion}</p>
-            <div className="chips">
+            <ul className="lista-acepta">
               {punto.categorias.map((id) => {
-                const c = db.categorias.find((x) => x.id === id)!
-                return <ChipCategoria key={id} nombre={`${c.nombre} · ${c.puntosPorUnidad} pts/${c.unidad}`} color={c.color} />
+                const c = db.categorias.find((x) => x.id === id)
+                if (!c || !c.activa) return null
+                return (
+                  <li key={id}>
+                    <ChipCategoria nombre={`${c.nombre} · ${c.puntosPorUnidad} pts/${c.unidad}`} color={c.color} />
+                    {c.descripcion && <small>{c.descripcion}</small>}
+                  </li>
+                )
               })}
-            </div>
+            </ul>
           </div>
           <div className="punto-detalle-acc">
             <span className="codigo-mono">{punto.codigoQr}</span>
@@ -557,6 +563,8 @@ export function Perfil({ usuario }: { usuario: Usuario }) {
       </section>
       <section className="bloque">
         <dl className="dl">
+          <dt>Universidad</dt>
+          <dd>{db.instituciones.find((i) => i.id === usuario.institucionId)?.nombre ?? '—'}</dd>
           <dt>Facultad o dependencia</dt>
           <dd>{usuario.facultad}</dd>
           <dt>Rol</dt>

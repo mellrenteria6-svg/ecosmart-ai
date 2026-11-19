@@ -1,7 +1,7 @@
 // RF07 EcoRanking, RF22 impacto ambiental e insignias.
 import { useState } from 'react'
 import { cambiarAnonimatoRanking, useStore } from '../data/store'
-import { ETIQUETA_PERIODO, impactoUsuario, insigniasUsuario, rankingFacultades, rankingUsuarios } from '../data/analitica'
+import { ETIQUETA_PERIODO, impactoUsuario, insigniasUsuario, rankingFacultades, rankingUniversidades, rankingUsuarios } from '../data/analitica'
 import type { Periodo } from '../data/analitica'
 import type { Usuario } from '../data/types'
 import { Encabezado, Vacio } from '../components/ui'
@@ -22,9 +22,14 @@ function SelectorPeriodo({ valor, onCambio }: { valor: Periodo; onCambio: (p: Pe
 export function EcoRanking({ usuario }: { usuario: Usuario }) {
   const { db } = useStore()
   const [periodo, setPeriodo] = useState<Periodo>('mes')
-  const [vista, setVista] = useState<'usuarios' | 'facultades'>('usuarios')
-  const filas = rankingUsuarios(db, periodo)
-  const facultades = rankingFacultades(db, periodo)
+  const [vista, setVista] = useState<'usuarios' | 'facultades' | 'universidades'>('usuarios')
+  const [alcance, setAlcance] = useState<'mia' | 'todas'>('mia')
+  const miUni = db.instituciones.find((i) => i.id === usuario.institucionId)
+  const filtroInst = alcance === 'mia' ? usuario.institucionId : undefined
+  const filas = rankingUsuarios(db, periodo, filtroInst)
+  const facultades = rankingFacultades(db, periodo, filtroInst)
+  const universidades = rankingUniversidades(db, periodo)
+  const maxUni = Math.max(1, ...universidades.map((u) => u.puntos))
   const yo = filas.find((f) => f.usuario.id === usuario.id)
   const podio = filas.slice(0, 3)
   const maxFac = Math.max(1, ...facultades.map((f) => f.puntos))
@@ -40,7 +45,14 @@ export function EcoRanking({ usuario }: { usuario: Usuario }) {
         <div className="tabs" role="tablist" aria-label="Vista">
           <button role="tab" aria-selected={vista === 'usuarios'} className={vista === 'usuarios' ? 'activo' : ''} onClick={() => setVista('usuarios')}>Personas</button>
           <button role="tab" aria-selected={vista === 'facultades'} className={vista === 'facultades' ? 'activo' : ''} onClick={() => setVista('facultades')}>Facultades</button>
+          <button role="tab" aria-selected={vista === 'universidades'} className={vista === 'universidades' ? 'activo' : ''} onClick={() => setVista('universidades')}>Universidades</button>
         </div>
+        {vista !== 'universidades' && (
+          <div className="tabs" role="tablist" aria-label="Alcance">
+            <button role="tab" aria-selected={alcance === 'mia'} className={alcance === 'mia' ? 'activo' : ''} onClick={() => setAlcance('mia')}>{miUni?.siglas ?? 'Mi universidad'}</button>
+            <button role="tab" aria-selected={alcance === 'todas'} className={alcance === 'todas' ? 'activo' : ''} onClick={() => setAlcance('todas')}>Todas</button>
+          </div>
+        )}
       </div>
 
       <section className="mi-puesto">
@@ -56,7 +68,28 @@ export function EcoRanking({ usuario }: { usuario: Usuario }) {
         </label>
       </section>
 
-      {vista === 'usuarios' ? (
+      {vista === 'universidades' ? (
+        universidades.length === 0 ? (
+          <Vacio titulo="Sin datos en este periodo" />
+        ) : (
+          <ul className="barras bloque">
+            {universidades.map((u, i) => (
+              <li key={u.institucion.id}>
+                <span className="barras-et">
+                  <b>{i + 1}.</b> {u.institucion.siglas}
+                  {u.institucion.id === usuario.institucionId && ' (tú)'}
+                </span>
+                <span className="barras-pista">
+                  <span style={{ width: `${(u.puntos / maxUni) * 100}%`, background: u.institucion.id === usuario.institucionId ? 'var(--accent)' : 'var(--moss)' }} />
+                </span>
+                <span className="barras-val">
+                  {fmtNumero(u.puntos)} pts <small>· {u.participantes} participantes</small>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : vista === 'usuarios' ? (
         filas.length === 0 ? (
           <Vacio titulo="Aún no hay reciclajes validados en este periodo" />
         ) : (
@@ -84,7 +117,10 @@ export function EcoRanking({ usuario }: { usuario: Usuario }) {
                       {f.nombrePublico}
                       {f.usuario.id === usuario.id && <span className="badge badge-ok">Tú</span>}
                     </b>
-                    <small>{f.usuario.rankingAnonimo ? 'Facultad oculta' : f.usuario.facultad} · {f.reciclajes} reciclajes</small>
+                    <small>
+                      {f.usuario.rankingAnonimo ? 'Facultad oculta' : f.usuario.facultad}
+                      {alcance === 'todas' && ` · ${db.instituciones.find((i) => i.id === f.usuario.institucionId)?.siglas ?? ''}`} · {f.reciclajes} reciclajes
+                    </small>
                   </div>
                   <span className="rk-pts">{fmtNumero(f.puntos)}</span>
                 </li>

@@ -28,14 +28,16 @@ const MENU: Record<Rol, { href: string; texto: string }[]> = {
     { href: '#/admin/entregas', texto: 'Entregas' },
     { href: '#/admin/reportes', texto: 'Reportes' },
     { href: '#/admin/usuarios', texto: 'Usuarios' },
+    { href: '#/admin/instituciones', texto: 'Universidades' },
     { href: '#/admin/auditoria', texto: 'Auditoría' },
   ],
   aliado: [{ href: '#/aliado', texto: 'Inicio' }],
 }
 
-export function Marca() {
+/** Logo. Dentro de la aplicación lleva al inicio de cada rol, no a la portada pública. */
+export function Marca({ href = '#/' }: { href?: string }) {
   return (
-    <a className="brand" href="#/" aria-label="EcoSmart AI, inicio">
+    <a className="brand" href={href} aria-label="EcoSmart AI, inicio">
       <span className="brand-mark" aria-hidden="true">
         E
       </span>
@@ -82,7 +84,7 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
       </a>
       <header className="shell-header">
         <div className="shell-header-inner">
-          <Marca />
+          <Marca href={items[0].href} />
           <nav className={`shell-nav ${menuAbierto ? 'abierto' : ''}`} aria-label="Navegación principal">
             {items.map((i) => (
               <a key={i.href} href={i.href} className={activo(i.href) ? 'activo' : ''} aria-current={activo(i.href) ? 'page' : undefined} onClick={() => setMenuAbierto(false)}>

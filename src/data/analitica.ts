@@ -23,10 +23,10 @@ export interface FilaRanking {
  * Suma solo los EcoPoints ganados por reciclaje (no canjes ni ajustes) en el periodo.
  * Desempate: más reciclajes validados y luego quien llegó primero al puntaje (último movimiento más antiguo).
  */
-export function rankingUsuarios(db: Db, periodo: Periodo): FilaRanking[] {
+export function rankingUsuarios(db: Db, periodo: Periodo, institucionId?: string): FilaRanking[] {
   const inicio = desde(periodo)
   const filas = db.usuarios
-    .filter((u) => u.rol === 'usuario' && !u.bloqueado)
+    .filter((u) => u.rol === 'usuario' && !u.bloqueado && (!institucionId || u.institucionId === institucionId))
     .map((u) => {
       const movs = db.movimientos.filter((m) => m.usuarioId === u.id && m.tipo === 'reciclaje' && m.creadoEn >= inicio)
       return {
@@ -44,9 +44,19 @@ export function rankingUsuarios(db: Db, periodo: Periodo): FilaRanking[] {
   return filas
 }
 
-export function rankingFacultades(db: Db, periodo: Periodo) {
+export function rankingUniversidades(db: Db, periodo: Periodo) {
+  return db.instituciones
+    .map((i) => {
+      const filas = rankingUsuarios(db, periodo, i.id)
+      return { institucion: i, puntos: filas.reduce((t, f) => t + f.puntos, 0), participantes: filas.length }
+    })
+    .filter((x) => x.participantes > 0)
+    .sort((a, b) => b.puntos - a.puntos || b.participantes - a.participantes)
+}
+
+export function rankingFacultades(db: Db, periodo: Periodo, institucionId?: string) {
   const mapa = new Map<string, { facultad: string; puntos: number; participantes: number }>()
-  for (const f of rankingUsuarios(db, periodo)) {
+  for (const f of rankingUsuarios(db, periodo, institucionId)) {
     const actual = mapa.get(f.usuario.facultad) ?? { facultad: f.usuario.facultad, puntos: 0, participantes: 0 }
     actual.puntos += f.puntos
     actual.participantes += 1

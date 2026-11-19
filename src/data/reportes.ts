@@ -8,6 +8,7 @@ export interface Filtros {
   hasta: string // YYYY-MM-DD
   puntoId: string // 'todos' o id
   categoriaId: string // 'todas' o id
+  institucionId: string // 'todas' o id
 }
 
 export interface Columna {
@@ -32,6 +33,7 @@ export interface DefReporte {
   descripcion: string
   usaPunto: boolean
   usaCategoria: boolean
+  usaInstitucion: boolean
   generar: (db: Db, f: Filtros) => ResultadoReporte
 }
 
@@ -47,10 +49,17 @@ function rango(f: Filtros) {
   return { ini, fin }
 }
 
+/** Usuarios de la universidad filtrada (o todos). */
+function deInstitucion(db: Db, f: Filtros) {
+  return (usuarioId: string) => f.institucionId === 'todas' || db.usuarios.find((u) => u.id === usuarioId)?.institucionId === f.institucionId
+}
+
 function reciclajesFiltrados(db: Db, f: Filtros) {
   const { ini, fin } = rango(f)
+  const inst = deInstitucion(db, f)
   return db.reciclajes.filter(
     (r) =>
+      inst(r.usuarioId) &&
       r.creadoEn >= ini &&
       r.creadoEn <= fin &&
       (f.puntoId === 'todos' || r.puntoId === f.puntoId) &&
@@ -71,6 +80,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Detalle de cada registro con usuario, punto, categoría, cantidad, estado y EcoPoints.',
     usaPunto: true,
     usaCategoria: true,
+    usaInstitucion: true,
     generar(db, f) {
       const rs = reciclajesFiltrados(db, f).sort((a, b) => a.creadoEn - b.creadoEn)
       const filas = rs.map((r) => ({
@@ -113,6 +123,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Cantidad validada de cada material y su participación sobre el total de registros.',
     usaPunto: true,
     usaCategoria: true,
+    usaInstitucion: true,
     generar(db, f) {
       const rs = reciclajesFiltrados(db, f)
       const filas = db.categorias
@@ -158,6 +169,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Registros, validaciones, rechazos y pendientes de cada punto del campus.',
     usaPunto: true,
     usaCategoria: true,
+    usaInstitucion: true,
     generar(db, f) {
       const rs = reciclajesFiltrados(db, f)
       const filas = db.puntos
@@ -205,6 +217,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Usuarios que reciclaron en el periodo, ordenados por EcoPoints ganados por reciclaje.',
     usaPunto: true,
     usaCategoria: true,
+    usaInstitucion: true,
     generar(db, f) {
       const rs = reciclajesFiltrados(db, f)
       const ids = [...new Set(rs.map((r) => r.usuarioId))]
@@ -216,6 +229,7 @@ export const REPORTES: DefReporte[] = [
           return {
             usuario: u.nombre,
             correo: u.correo,
+            universidad: db.instituciones.find((i) => i.id === u.institucionId)?.siglas ?? '—',
             facultad: u.facultad,
             registros: propios.length,
             validados: val.length,
@@ -230,6 +244,7 @@ export const REPORTES: DefReporte[] = [
           { clave: 'puesto', titulo: 'Puesto', num: true },
           { clave: 'usuario', titulo: 'Usuario' },
           { clave: 'correo', titulo: 'Correo' },
+          { clave: 'universidad', titulo: 'Universidad' },
           { clave: 'facultad', titulo: 'Facultad' },
           { clave: 'registros', titulo: 'Registros', num: true },
           { clave: 'validados', titulo: 'Validados', num: true },
@@ -238,7 +253,7 @@ export const REPORTES: DefReporte[] = [
         filas,
         resumen: [
           { etiqueta: 'Usuarios activos', valor: String(filas.length) },
-          { etiqueta: 'Usuarios registrados', valor: String(db.usuarios.filter((u) => u.rol === 'usuario').length) },
+          { etiqueta: 'Usuarios registrados', valor: String(db.usuarios.filter((u) => u.rol === 'usuario' && deInstitucion(db, f)(u.id)).length) },
           { etiqueta: 'Líder histórico', valor: historico[0] ? historico[0].nombrePublico : '—' },
         ],
       }
@@ -251,12 +266,14 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Libro de movimientos: puntos otorgados, canjeados, devueltos y ajustes.',
     usaPunto: false,
     usaCategoria: false,
+    usaInstitucion: true,
     generar(db, f) {
       const { ini, fin } = rango(f)
-      const movs = db.movimientos.filter((m) => m.creadoEn >= ini && m.creadoEn <= fin).sort((a, b) => a.creadoEn - b.creadoEn)
+      const inst = deInstitucion(db, f)
+      const movs = db.movimientos.filter((m) => inst(m.usuarioId) && m.creadoEn >= ini && m.creadoEn <= fin).sort((a, b) => a.creadoEn - b.creadoEn)
       const suma = (tipo: string) => movs.filter((m) => m.tipo === tipo).reduce((t, m) => t + m.puntos, 0)
       const TIPO: Record<string, string> = { reciclaje: 'Reciclaje', canje: 'Canje', devolucion: 'Devolución', ajuste: 'Ajuste' }
-      const enCirculacion = db.movimientos.reduce((t, m) => t + m.puntos, 0)
+      const enCirculacion = db.movimientos.filter((m) => inst(m.usuarioId)).reduce((t, m) => t + m.puntos, 0)
       return {
         columnas: [
           { clave: 'fecha', titulo: 'Fecha' },
@@ -284,9 +301,11 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Por recompensa: canjes creados, entregados, pendientes, vencidos o cancelados y stock restante.',
     usaPunto: false,
     usaCategoria: false,
+    usaInstitucion: true,
     generar(db, f) {
       const { ini, fin } = rango(f)
-      const cs = db.canjes.filter((c) => c.creadoEn >= ini && c.creadoEn <= fin)
+      const inst = deInstitucion(db, f)
+      const cs = db.canjes.filter((c) => inst(c.usuarioId) && c.creadoEn >= ini && c.creadoEn <= fin)
       const filas = db.recompensas
         .map((rw) => {
           const dr = cs.filter((c) => c.recompensaId === rw.id)
@@ -333,6 +352,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Lotes cerrados, registros validados y rechazados, cantidades corregidas y tiempo promedio de validación.',
     usaPunto: true,
     usaCategoria: false,
+    usaInstitucion: false,
     generar(db, f) {
       const { ini, fin } = rango(f)
       const filas = db.usuarios
@@ -379,6 +399,7 @@ export const REPORTES: DefReporte[] = [
     descripcion: 'Por categoría: coincidencia entre la propuesta de la IA y lo validado, correcciones y confianza promedio.',
     usaPunto: true,
     usaCategoria: true,
+    usaInstitucion: true,
     generar(db, f) {
       const rs = reciclajesFiltrados(db, f)
       const filas = db.categorias

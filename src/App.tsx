@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import './App.css'
-import { procesarVencimientos, sincronizarCola, useStore, usuarioActual } from './data/store'
+import { MODO_SERVIDOR, procesarVencimientos, refrescarDesdeServidor, sincronizarCola, useStore, usuarioActual } from './data/store'
 import type { Rol, Usuario } from './data/types'
 import { Shell } from './components/Shell'
 import { Vacio } from './components/ui'
@@ -12,7 +12,7 @@ import { Reciclar } from './pages/Reciclar'
 import { LotesCerrados, PendientesPunto, PuntosRecolector, RevisionIndividual } from './pages/Recolector'
 import { Reportes } from './pages/Reportes'
 import { EcoRanking, Impacto } from './pages/Comunidad'
-import { AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
+import { AdminInstituciones, AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
 
 const INICIO_ROL: Record<Rol, string> = { usuario: '/app', recolector: '/rec', admin: '/admin', aliado: '/' }
 
@@ -69,6 +69,8 @@ function PaginaAdmin({ u, partes }: { u: Usuario; partes: string[] }) {
       return <AdminUsuarios usuario={u} />
     case 'auditoria':
       return <Auditoria />
+    case 'instituciones':
+      return <AdminInstituciones usuario={u} />
     case 'reportes':
       return <Reportes key={partes[2] ?? ''} usuario={u} reporteId={partes[2]} />
     default:
@@ -84,6 +86,16 @@ export default function App() {
   useEffect(() => {
     procesarVencimientos()
     void sincronizarCola()
+    if (!MODO_SERVIDOR) return
+    // Modo base de datos: trae los datos de PostgreSQL y los mantiene al día
+    void refrescarDesdeServidor()
+    const t = setInterval(() => void refrescarDesdeServidor(), 20000)
+    const alVolver = () => document.visibilityState === 'visible' && void refrescarDesdeServidor()
+    document.addEventListener('visibilitychange', alVolver)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', alVolver)
+    }
   }, [])
 
   useEffect(() => {

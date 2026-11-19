@@ -16,12 +16,13 @@ function haceDias(n: number) {
 export function Reportes({ usuario, reporteId }: { usuario: Usuario; reporteId?: string }) {
   const { db } = useStore()
   const def = REPORTES.find((r) => r.id === reporteId) ?? REPORTES[0]
-  const [filtros, setFiltros] = useState<Filtros>({ desde: haceDias(30), hasta: hoyIso(), puntoId: 'todos', categoriaId: 'todas' })
+  const [filtros, setFiltros] = useState<Filtros>({ desde: haceDias(30), hasta: hoyIso(), puntoId: 'todos', categoriaId: 'todas', institucionId: 'todas' })
   const res = useMemo(() => def.generar(db, filtros), [db, def, filtros])
   const rangoInvalido = filtros.desde > filtros.hasta
 
   const descFiltros = [
     `${fmtFecha(filtros.desde)} – ${fmtFecha(filtros.hasta)}`,
+    def.usaInstitucion ? `Universidad: ${filtros.institucionId === 'todas' ? 'todas' : db.instituciones.find((i) => i.id === filtros.institucionId)?.siglas}` : null,
     def.usaPunto ? `Punto: ${filtros.puntoId === 'todos' ? 'todos' : db.puntos.find((p) => p.id === filtros.puntoId)?.nombre}` : null,
     def.usaCategoria ? `Categoría: ${filtros.categoriaId === 'todas' ? 'todas' : db.categorias.find((c) => c.id === filtros.categoriaId)?.nombre}` : null,
   ]
@@ -76,6 +77,18 @@ export function Reportes({ usuario, reporteId }: { usuario: Usuario; reporteId?:
           <div className="reporte-filtros no-imprimir">
             <Campo etiqueta="Desde">{(id) => <input id={id} type="date" className="input" value={filtros.desde} max={filtros.hasta} onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })} />}</Campo>
             <Campo etiqueta="Hasta">{(id) => <input id={id} type="date" className="input" value={filtros.hasta} onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })} />}</Campo>
+            {def.usaInstitucion && (
+              <Campo etiqueta="Universidad">
+                {(id) => (
+                  <select id={id} className="input" value={filtros.institucionId} onChange={(e) => setFiltros({ ...filtros, institucionId: e.target.value })}>
+                    <option value="todas">Todas</option>
+                    {db.instituciones.map((i) => (
+                      <option key={i.id} value={i.id}>{i.siglas}</option>
+                    ))}
+                  </select>
+                )}
+              </Campo>
+            )}
             {def.usaPunto && (
               <Campo etiqueta="Punto">
                 {(id) => (

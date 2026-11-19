@@ -1,4 +1,4 @@
-import type { CategoriaResiduo, Db, Reciclaje, MovimientoPuntos } from './types'
+import type { CategoriaResiduo, Db, Institucion, Reciclaje, MovimientoPuntos } from './types'
 
 // Datos de demostración. Contraseña de todas las cuentas demo: EcoSmart2026
 export const DEMO_PASSWORD = 'EcoSmart2026'
@@ -21,11 +21,21 @@ export function fotoPlaceholder(texto: string, color: string) {
 }
 
 export const CATEGORIAS_SEMILLA: CategoriaResiduo[] = [
-  { id: 'cat-pet', nombre: 'Plástico PET', unidad: 'botella', puntosPorUnidad: 10, minimo: 1, maximo: 20, version: 1, color: '#2f80c0', activa: true, impacto: { co2Kg: 0.08, aguaL: 3.2, energiaKwh: 0.21 } },
-  { id: 'cat-papel', nombre: 'Papel y cartón', unidad: 'kg', puntosPorUnidad: 15, minimo: 0.5, maximo: 5, version: 1, color: '#a27a4b', activa: true, impacto: { co2Kg: 0.9, aguaL: 26, energiaKwh: 4.1 } },
-  { id: 'cat-vidrio', nombre: 'Vidrio', unidad: 'envase', puntosPorUnidad: 8, minimo: 1, maximo: 10, version: 1, color: '#2e9a7a', activa: true, impacto: { co2Kg: 0.12, aguaL: 1.1, energiaKwh: 0.17 } },
-  { id: 'cat-lata', nombre: 'Latas de aluminio', unidad: 'lata', puntosPorUnidad: 12, minimo: 1, maximo: 20, version: 1, color: '#7b7f8c', activa: true, impacto: { co2Kg: 0.15, aguaL: 0.9, energiaKwh: 0.42 } },
-  { id: 'cat-tetra', nombre: 'Tetra Pak', unidad: 'envase', puntosPorUnidad: 6, minimo: 1, maximo: 15, version: 1, color: '#c9862e', activa: true, impacto: { co2Kg: 0.05, aguaL: 1.6, energiaKwh: 0.09 } },
+  { id: 'cat-pet', nombre: 'Plástico PET', descripcion: 'Botellas de bebidas: agua, gaseosa, jugo', unidad: 'botella', puntosPorUnidad: 10, minimo: 1, maximo: 20, version: 1, color: '#2f80c0', activa: true, impacto: { co2Kg: 0.08, aguaL: 3.2, energiaKwh: 0.21 } },
+  { id: 'cat-papel', nombre: 'Papel y cartón', descripcion: 'Cajas, hojas, periódicos y cartón aplanado', unidad: 'kg', puntosPorUnidad: 15, minimo: 0.5, maximo: 5, version: 1, color: '#a27a4b', activa: true, impacto: { co2Kg: 0.9, aguaL: 26, energiaKwh: 4.1 } },
+  { id: 'cat-vidrio', nombre: 'Vidrio', descripcion: 'Botellas y frascos de vidrio', unidad: 'envase', puntosPorUnidad: 8, minimo: 1, maximo: 10, version: 1, color: '#2e9a7a', activa: true, impacto: { co2Kg: 0.12, aguaL: 1.1, energiaKwh: 0.17 } },
+  { id: 'cat-lata', nombre: 'Latas de aluminio', descripcion: 'Latas de bebidas de aluminio', unidad: 'lata', puntosPorUnidad: 12, minimo: 1, maximo: 20, version: 1, color: '#7b7f8c', activa: true, impacto: { co2Kg: 0.15, aguaL: 0.9, energiaKwh: 0.42 } },
+  { id: 'cat-tetra', nombre: 'Tetra Pak', descripcion: 'Cartones de leche y jugo', unidad: 'envase', puntosPorUnidad: 6, minimo: 1, maximo: 15, version: 1, color: '#c9862e', activa: true, impacto: { co2Kg: 0.05, aguaL: 1.6, energiaKwh: 0.09 } },
+  { id: 'cat-plastico', nombre: 'Otros plásticos', descripcion: 'Tarrinas, vasos, envases de comida, tapas y frascos de limpieza (no bolsas)', unidad: 'envase', puntosPorUnidad: 5, minimo: 1, maximo: 15, version: 1, color: '#8e5bb5', activa: true, impacto: { co2Kg: 0.06, aguaL: 2.1, energiaKwh: 0.16 } },
+]
+
+// Dominios de ejemplo: confirmar con cada universidad antes del piloto.
+export const INSTITUCIONES_SEMILLA: Institucion[] = [
+  { id: 'inst-demo', nombre: 'Universidad Demo', siglas: 'DEMO', dominios: ['universidad.edu.ec'], activa: true },
+  { id: 'inst-espol', nombre: 'Escuela Superior Politécnica del Litoral', siglas: 'ESPOL', dominios: ['espol.edu.ec'], activa: true },
+  { id: 'inst-ecotec', nombre: 'Universidad Tecnológica ECOTEC', siglas: 'ECOTEC', dominios: ['ecotec.edu.ec', 'est.ecotec.edu.ec'], activa: true },
+  { id: 'inst-ucsg', nombre: 'Universidad Católica de Santiago de Guayaquil', siglas: 'UCSG', dominios: ['ucsg.edu.ec', 'cu.ucsg.edu.ec'], activa: true },
+  { id: 'inst-uees', nombre: 'Universidad Espíritu Santo', siglas: 'UEES', dominios: ['uees.edu.ec'], activa: true },
 ]
 
 export function crearDbSemilla(): Db {
@@ -97,28 +107,28 @@ export function crearDbSemilla(): Db {
   return {
     version: 2,
     config: {
-      dominioInstitucional: 'universidad.edu.ec',
       topeDiario: 10,
       umbralConfianza: 0.7,
       horasVencimientoCanje: 72,
       diasRetencionFotos: 90,
-      modeloVersion: 'eco-clf-1.0-sim',
+      modeloVersion: 'clip-vit-b32-q8-zs-1.0',
       factorImpactoVersion: 'FI-2026.1',
     },
+    instituciones: INSTITUCIONES_SEMILLA.map((i) => ({ ...i, dominios: [...i.dominios] })),
     usuarios: [
-      { id: 'u-estudiante', nombre: 'Valeria Gómez', correo: 'estudiante@universidad.edu.ec', facultad: 'Ingeniería', rol: 'usuario', passwordHash: 'd303431fc6d7cafecba57c9441ea8520a14779be1b12989a497b63f5a390d248', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 30 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-diego', nombre: 'Diego Paredes', correo: 'diego.paredes@universidad.edu.ec', facultad: 'Ciencias Económicas', rol: 'usuario', passwordHash: '4d3fd7a2047a93b69a0b68af92da2760e16d047a1d43b3a13aa16995960894e2', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 20 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-recolector', nombre: 'Carlos Mendoza', correo: 'recolector@universidad.edu.ec', facultad: 'Servicios Generales', rol: 'recolector', passwordHash: 'f196ca5d520c2f5fe11b551855b1b05b218cfd8c7c17974ce294ae471c0a75d5', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 60 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-rosa', nombre: 'Rosa Vera', correo: 'rosa.vera@universidad.edu.ec', facultad: 'Servicios Generales', rol: 'recolector', passwordHash: '0e92cb90ed3bf024c2a9fbab2dba28c27f8ede1ef0a2d196022aa11613234f71', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 60 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-andrea', nombre: 'Andrea Salazar', correo: 'andrea.salazar@universidad.edu.ec', facultad: 'Ciencias de la Salud', rol: 'usuario', passwordHash: 'd488cf0ccff2ba39cabd3095ca0829def1732dceedafa07c6152bc6886c75641', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 25 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-jorge', nombre: 'Jorge Mora', correo: 'jorge.mora@universidad.edu.ec', facultad: 'Ingeniería', rol: 'usuario', passwordHash: '192e94c4f02c4f1f4a601b91fcf2129d65a3253761d9bc3065a4990a40e3c274', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 18 * DIA, consentimientoPrivacidad: true, rankingAnonimo: true },
-      { id: 'u-aliado', nombre: 'Cafetería El Roble', correo: 'aliado@universidad.edu.ec', facultad: 'Aliado del campus', rol: 'aliado', passwordHash: '51422b7f8f9bfb04a2177113f766d49f4124efa82dcd52eb7a0d139206093fb5', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 40 * DIA, consentimientoPrivacidad: true },
-      { id: 'u-admin', nombre: 'Laura Ríos', correo: 'admin@universidad.edu.ec', facultad: 'Gestión Ambiental', rol: 'admin', passwordHash: '8a4de7fba71259029a7a945c829e795b3ab6c64f7da2dcbb466e3e4a6a494363', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 90 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-estudiante', nombre: 'Valeria Gómez', correo: 'estudiante@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Ingeniería', rol: 'usuario', passwordHash: 'd303431fc6d7cafecba57c9441ea8520a14779be1b12989a497b63f5a390d248', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 30 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-diego', nombre: 'Diego Paredes', correo: 'diego.paredes@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Ciencias Económicas', rol: 'usuario', passwordHash: '4d3fd7a2047a93b69a0b68af92da2760e16d047a1d43b3a13aa16995960894e2', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 20 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-recolector', nombre: 'Carlos Mendoza', correo: 'recolector@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Servicios Generales', rol: 'recolector', passwordHash: 'f196ca5d520c2f5fe11b551855b1b05b218cfd8c7c17974ce294ae471c0a75d5', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 60 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-rosa', nombre: 'Rosa Vera', correo: 'rosa.vera@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Servicios Generales', rol: 'recolector', passwordHash: '0e92cb90ed3bf024c2a9fbab2dba28c27f8ede1ef0a2d196022aa11613234f71', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 60 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-andrea', nombre: 'Andrea Salazar', correo: 'andrea.salazar@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Ciencias de la Salud', rol: 'usuario', passwordHash: 'd488cf0ccff2ba39cabd3095ca0829def1732dceedafa07c6152bc6886c75641', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 25 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-jorge', nombre: 'Jorge Mora', correo: 'jorge.mora@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Ingeniería', rol: 'usuario', passwordHash: '192e94c4f02c4f1f4a601b91fcf2129d65a3253761d9bc3065a4990a40e3c274', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 18 * DIA, consentimientoPrivacidad: true, rankingAnonimo: true },
+      { id: 'u-aliado', nombre: 'Cafetería El Roble', correo: 'aliado@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Aliado del campus', rol: 'aliado', passwordHash: '51422b7f8f9bfb04a2177113f766d49f4124efa82dcd52eb7a0d139206093fb5', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 40 * DIA, consentimientoPrivacidad: true },
+      { id: 'u-admin', nombre: 'Laura Ríos', correo: 'admin@universidad.edu.ec', institucionId: 'inst-demo', facultad: 'Gestión Ambiental', rol: 'admin', passwordHash: '8a4de7fba71259029a7a945c829e795b3ab6c64f7da2dcbb466e3e4a6a494363', verificado: true, bloqueado: false, intentosFallidos: 0, sesionVersion: 1, creadoEn: ahora - 90 * DIA, consentimientoPrivacidad: true },
     ],
     puntos: [
-      { id: 'p-biblioteca', nombre: 'Biblioteca central', ubicacion: 'Planta baja, junto al ingreso principal', codigoQr: 'ECO-BIB-01', categorias: ['cat-pet', 'cat-papel', 'cat-vidrio', 'cat-tetra'], estado: 'activo', visible: true, mapa: { x: 28, y: 34 } },
-      { id: 'p-cafeteria', nombre: 'Cafetería principal', ubicacion: 'Patio de comidas, lado norte', codigoQr: 'ECO-CAF-02', categorias: ['cat-pet', 'cat-lata', 'cat-tetra', 'cat-vidrio'], estado: 'activo', visible: true, mapa: { x: 62, y: 28 } },
-      { id: 'p-ingenieria', nombre: 'Facultad de Ingeniería', ubicacion: 'Bloque B, pasillo de laboratorios', codigoQr: 'ECO-ING-03', categorias: ['cat-pet', 'cat-papel', 'cat-lata'], estado: 'activo', visible: true, mapa: { x: 74, y: 66 } },
+      { id: 'p-biblioteca', nombre: 'Biblioteca central', ubicacion: 'Planta baja, junto al ingreso principal', codigoQr: 'ECO-BIB-01', categorias: ['cat-pet', 'cat-plastico', 'cat-papel', 'cat-vidrio', 'cat-tetra'], estado: 'activo', visible: true, mapa: { x: 28, y: 34 } },
+      { id: 'p-cafeteria', nombre: 'Cafetería principal', ubicacion: 'Patio de comidas, lado norte', codigoQr: 'ECO-CAF-02', categorias: ['cat-pet', 'cat-plastico', 'cat-lata', 'cat-tetra', 'cat-vidrio'], estado: 'activo', visible: true, mapa: { x: 62, y: 28 } },
+      { id: 'p-ingenieria', nombre: 'Facultad de Ingeniería', ubicacion: 'Bloque B, pasillo de laboratorios', codigoQr: 'ECO-ING-03', categorias: ['cat-pet', 'cat-plastico', 'cat-papel', 'cat-lata'], estado: 'activo', visible: true, mapa: { x: 74, y: 66 } },
       { id: 'p-deportes', nombre: 'Complejo deportivo', ubicacion: 'Entrada del coliseo', codigoQr: 'ECO-DEP-04', categorias: ['cat-pet', 'cat-lata'], estado: 'mantenimiento', visible: true, mapa: { x: 22, y: 74 } },
     ],
     categorias: CATEGORIAS_SEMILLA.map((c) => ({ ...c })),

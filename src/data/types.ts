@@ -3,10 +3,21 @@
 
 export type Rol = 'usuario' | 'recolector' | 'admin' | 'aliado'
 
+// Universidades participantes. Cada una puede tener varios dominios de correo
+// (por ejemplo uno para estudiantes y otro para personal).
+export interface Institucion {
+  id: string
+  nombre: string
+  siglas: string
+  dominios: string[]
+  activa: boolean
+}
+
 export interface Usuario {
   id: string
   nombre: string
   correo: string
+  institucionId: string
   facultad: string
   rol: Rol
   passwordHash: string
@@ -36,6 +47,7 @@ export interface PuntoReciclaje {
 export interface CategoriaResiduo {
   id: string
   nombre: string
+  descripcion?: string // qué entra en la categoría
   unidad: string
   puntosPorUnidad: number
   minimo: number
@@ -206,7 +218,7 @@ export interface Token {
 }
 
 export interface Configuracion {
-  dominioInstitucional: string
+  dominioInstitucional?: string // obsoleto: reemplazado por Db.instituciones
   topeDiario: number
   umbralConfianza: number // 0-1
   horasVencimientoCanje: number
@@ -219,11 +231,13 @@ export interface Sesion {
   usuarioId: string
   sesionVersion: number
   creadaEn: number
+  token?: string // modo servidor: token de sesión emitido por la API
 }
 
 export interface Db {
   version: number
   config: Configuracion
+  instituciones: Institucion[]
   usuarios: Usuario[]
   puntos: PuntoReciclaje[]
   categorias: CategoriaResiduo[]

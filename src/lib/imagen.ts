@@ -9,9 +9,13 @@ export interface FotoProcesada {
   ancho: number
   alto: number
   promedio: { r: number; g: number; b: number }
+  nitidez: number // varianza del laplaciano: valores bajos = foto borrosa
 }
 
-const LADO_MAXIMO = 480
+// Resolución con la que se guarda la foto (suficiente para que el recolector la revise
+// y para la IA, que trabaja a 224 px).
+const LADO_MAXIMO = 960
+export const UMBRAL_NITIDEZ = 60
 
 export function canvasDesdeFuente(fuente: CanvasImageSource, ancho: number, alto: number) {
   const escala = Math.min(1, LADO_MAXIMO / Math.max(ancho, alto))
@@ -19,8 +23,37 @@ export function canvasDesdeFuente(fuente: CanvasImageSource, ancho: number, alto
   canvas.width = Math.round(ancho * escala)
   canvas.height = Math.round(alto * escala)
   const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(fuente, 0, 0, canvas.width, canvas.height)
   return canvas
+}
+
+/** Nitidez: varianza del laplaciano sobre una copia en grises de 320 px. */
+function medirNitidez(canvas: HTMLCanvasElement) {
+  const w = 320
+  const h = Math.max(1, Math.round((w * canvas.height) / canvas.width))
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(canvas, 0, 0, w, h)
+  const px = ctx.getImageData(0, 0, w, h).data
+  const g = new Float32Array(w * h)
+  for (let i = 0; i < w * h; i += 1) g[i] = px[i * 4] * 0.299 + px[i * 4 + 1] * 0.587 + px[i * 4 + 2] * 0.114
+  let suma = 0
+  let suma2 = 0
+  let n = 0
+  for (let y = 1; y < h - 1; y += 1) {
+    for (let x = 1; x < w - 1; x += 1) {
+      const i = y * w + x
+      const l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w]
+      suma += l
+      suma2 += l * l
+      n += 1
+    }
+  }
+  const media = suma / n
+  return Math.round(suma2 / n - media * media)
 }
 
 /** Huella dHash de 64 bits en hexadecimal. */
@@ -72,18 +105,20 @@ export function procesarCanvas(canvas: HTMLCanvasElement): FotoProcesada {
   if (media > 245) throw new FotoInvalida('La foto está sobreexpuesta. Evita apuntar a una luz directa.')
   if (desviacion < 8) throw new FotoInvalida('No se distingue ningún objeto en la foto. Enfoca el residuo.')
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
-  if (dataUrl.length > 400_000) throw new FotoInvalida('La imagen supera el tamaño permitido.')
+  let dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+  if (dataUrl.length > 450_000) dataUrl = canvas.toDataURL('image/jpeg', 0.72)
+  if (dataUrl.length > 700_000) throw new FotoInvalida('La imagen supera el tamaño permitido.')
   return {
     dataUrl,
     hash: dHash(canvas),
     ancho: canvas.width,
     alto: canvas.height,
     promedio: { r: r / n, g: g / n, b: b / n },
+    nitidez: medirNitidez(canvas),
   }
 }
 
-export interface ResultadoIa {
+interface ResultadoColor {
   categoriaId: string
   confianza: number
   version: string
@@ -109,12 +144,11 @@ function aHsl(r: number, g: number, b: number) {
 }
 
 /**
- * Clasificador simulado: el prototipo no incluye el modelo ONNX real, así que
- * estima la categoría a partir del color dominante. Respeta el contrato de la
- * API (categoría, confianza y versión) para reemplazarlo luego por el modelo.
+ * Respaldo sin conexión: si el modelo de IA no puede cargarse, estima la categoría
+ * por el color dominante. Es poco preciso, por eso su confianza queda acotada y el
+ * registro suele pasar a revisión del recolector.
  */
-export async function clasificar(foto: FotoProcesada, categorias: CategoriaResiduo[], version: string): Promise<ResultadoIa> {
-  await new Promise((r) => setTimeout(r, 900 + Math.random() * 600))
+export async function clasificarPorColor(foto: FotoProcesada, categorias: CategoriaResiduo[], version: string): Promise<ResultadoColor> {
   const { h, s, l } = aHsl(foto.promedio.r, foto.promedio.g, foto.promedio.b)
   const objetivo: Record<string, { h: number; s: number }> = {
     'cat-pet': { h: 205, s: 0.35 },
@@ -140,7 +174,7 @@ export async function clasificar(foto: FotoProcesada, categorias: CategoriaResid
   // Escala la confianza a un rango realista (45 % – 97 %)
   const mejor = ordenadas[0]
   const margen = mejor.confianza - (ordenadas[1]?.confianza ?? 0)
-  const confianza = Math.min(0.97, Math.max(0.45, 0.5 + margen * 1.6))
+  const confianza = Math.min(0.65, Math.max(0.35, 0.4 + margen * 1.6))
   return {
     categoriaId: mejor.categoriaId,
     confianza: Math.round(confianza * 100) / 100,

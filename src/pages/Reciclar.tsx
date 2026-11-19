@@ -14,8 +14,10 @@ import {
 import type { PuntoReciclaje, Reciclaje, Usuario } from '../data/types'
 import { Alerta, Campo, EstadoBadge, useAccion } from '../components/ui'
 import { ChipCategoria } from '../components/Visual'
-import { FotoInvalida, canvasDesdeFuente, clasificar, fotoDemostracion, procesarCanvas } from '../lib/imagen'
-import type { FotoProcesada, ResultadoIa } from '../lib/imagen'
+import { FotoInvalida, UMBRAL_NITIDEZ, canvasDesdeFuente, fotoDemostracion, procesarCanvas } from '../lib/imagen'
+import type { FotoProcesada } from '../lib/imagen'
+import { clasificar, precargarIa, useEstadoIa } from '../lib/ia'
+import type { ResultadoIa } from '../lib/ia'
 import { ETIQUETA_COLA, fmtPct, hace } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
 
@@ -48,13 +50,20 @@ function useCamara(activa: boolean) {
       return
     }
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false })
+      .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
       .then((s) => {
         if (cancelado) {
           s.getTracks().forEach((t) => t.stop())
           return
         }
         stream = s
+        // Enfoque y exposición automáticos continuos donde la cámara lo permita
+        const pista = s.getVideoTracks()[0]
+        const capacidades = (pista.getCapabilities?.() ?? {}) as Record<string, unknown>
+        const avanzado: Record<string, string>[] = []
+        if (Array.isArray(capacidades.focusMode) && capacidades.focusMode.includes('continuous')) avanzado.push({ focusMode: 'continuous' })
+        if (Array.isArray(capacidades.exposureMode) && capacidades.exposureMode.includes('continuous')) avanzado.push({ exposureMode: 'continuous' })
+        if (avanzado.length) void pista.applyConstraints({ advanced: avanzado as MediaTrackConstraintSet[] }).catch(() => {})
         if (videoRef.current) {
           videoRef.current.srcObject = s
           void videoRef.current.play().then(() => setLista(true))
@@ -80,6 +89,8 @@ export function Reciclar({ usuario }: { usuario: Usuario }) {
   const [resultado, setResultado] = useState<{ reciclaje?: Reciclaje; enCola?: boolean } | null>(null)
   const hoy = registrosHoy(s.db, usuario.id)
   const topeAlcanzado = hoy >= s.db.config.topeDiario
+  const estadoIa = useEstadoIa()
+  useEffect(() => precargarIa(), [])
 
   const reiniciar = () => {
     setPaso('punto')
@@ -99,9 +110,14 @@ export function Reciclar({ usuario }: { usuario: Usuario }) {
           <p className="kicker">Nuevo reciclaje</p>
           <h1 className="h-pagina">{['¿Dónde estás reciclando?', 'Fotografía el residuo', 'Revisa la clasificación', '¡Registro enviado!'][indice]}</h1>
         </div>
-        <span className="contador-dia" title="Registros de hoy / tope diario">
-          {hoy}/{s.db.config.topeDiario} hoy
-        </span>
+        <div className="reciclar-chips">
+          <span className={`chip-ia chip-ia-${estadoIa.fase}`} title="Estado del modelo de IA en este dispositivo">
+            {estadoIa.fase === 'listo' ? 'IA lista' : estadoIa.fase === 'cargando' ? `Descargando IA ${estadoIa.progreso} %` : estadoIa.fase === 'error' ? 'IA sin conexión' : 'IA'}
+          </span>
+          <span className="contador-dia" title="Registros de hoy / tope diario">
+            {hoy}/{s.db.config.topeDiario} hoy
+          </span>
+        </div>
       </div>
       <ol className="stepper" aria-label="Progreso">
         {PASOS.map((p, i) => (
@@ -308,7 +324,7 @@ function PasoFoto({ punto, onFoto, onVolver }: { punto: PuntoReciclaje; onFoto: 
       <div className="chips">
         {punto.categorias.map((id) => {
           const c = db.categorias.find((x) => x.id === id)!
-          return <ChipCategoria key={id} nombre={c.nombre} color={c.color} />
+          return <ChipCategoria key={id} nombre={c.nombre} color={c.color} titulo={c.descripcion} />
         })}
       </div>
 
@@ -386,10 +402,9 @@ function PasoIa({
   useEffect(() => {
     if (ia) return
     let vivo = true
-    const t0 = performance.now()
-    void clasificar(foto, aceptadas, db.config.modeloVersion).then((r) => {
+    void clasificar(foto, db.categorias).then((r) => {
       if (!vivo) return
-      console.info(`[IA] clasificación en ${Math.round(performance.now() - t0)} ms`)
+      console.info(`[IA] ${r.version}: clasificación en ${r.ms} ms`)
       setIa(r)
     })
     return () => {
@@ -400,15 +415,21 @@ function PasoIa({
 
   useEffect(() => {
     if (ia && !categoria) {
-      setCategoria(ia.categoriaId)
-      const c = db.categorias.find((x) => x.id === ia.categoriaId)
+      // Si el punto no acepta lo que vio la IA, se preselecciona la mejor opción que sí acepta
+      const candidatos = [ia.categoriaId, ...ia.alternativas.map((a) => a.categoriaId)]
+      const elegida = candidatos.find((id) => punto.categorias.includes(id)) ?? punto.categorias[0]
+      setCategoria(elegida)
+      const c = db.categorias.find((x) => x.id === elegida)
       if (c) setCantidad(c.minimo)
     }
-  }, [ia, categoria, db.categorias])
+  }, [ia, categoria, db.categorias, punto.categorias])
 
   const cat = db.categorias.find((c) => c.id === categoria)
   const corregido = ia && categoria !== ia.categoriaId
   const baja = ia && ia.confianza < db.config.umbralConfianza
+  const fueraDelPunto = ia && !punto.categorias.includes(ia.categoriaId)
+  const borrosa = foto.nitidez < UMBRAL_NITIDEZ
+  const estadoIa = useEstadoIa()
   const estimado = cat ? Math.round(cantidad * cat.puntosPorUnidad) : 0
 
   async function enviar() {
@@ -442,7 +463,8 @@ function PasoIa({
           {!ia && (
             <div className="ia-analizando" role="status">
               <span className="linea-escaneo" />
-              <b>Analizando imagen…</b>
+              <b>{estadoIa.fase === 'cargando' ? `Descargando modelo de IA… ${estadoIa.progreso} %` : 'Analizando imagen…'}</b>
+              {estadoIa.fase === 'cargando' && <small>Solo la primera vez (≈ 90 MB). Luego queda guardado en el dispositivo.</small>}
             </div>
           )}
           <button type="button" className="btn btn-fantasma btn-sm ia-retomar" onClick={onRetomar}>Tomar otra</button>
@@ -462,6 +484,10 @@ function PasoIa({
                 <small className="mono">Modelo {ia.version}</small>
               </div>
             </div>
+            {ia.respaldo && <Alerta tono="warn">No se pudo cargar el modelo de IA (¿sin conexión?). Se usó una estimación por color, poco precisa: el registro irá a revisión.</Alerta>}
+            {ia.noReconocido && <Alerta tono="warn">No parece un residuo reciclable o está muy lejos. Acércate al objeto, con buena luz y fondo despejado.</Alerta>}
+            {fueraDelPunto && <Alerta tono="warn">Este punto no recibe {db.categorias.find((c) => c.id === ia.categoriaId)?.nombre}. Llévalo a otro punto o corrige la categoría si la IA se equivocó.</Alerta>}
+            {borrosa && <Alerta tono="warn">La foto salió algo borrosa. Si puedes, sostén el dispositivo firme y toma otra.</Alerta>}
             {ia.alternativas.length > 0 && (
               <p className="nota">
                 Otras opciones: {ia.alternativas.map((a) => `${db.categorias.find((c) => c.id === a.categoriaId)?.nombre} (${fmtPct(a.confianza)})`).join(', ')}
@@ -501,6 +527,12 @@ function PasoIa({
               ))}
             </div>
           </fieldset>
+
+          {cat.descripcion && (
+            <p className="nota incluye">
+              <b>{cat.nombre}</b> incluye: {cat.descripcion}.
+            </p>
+          )}
 
           <Campo etiqueta={`Cantidad (${cat.unidad})`} ayuda={`Entre ${cat.minimo} y ${cat.maximo} ${cat.unidad} · ${cat.puntosPorUnidad} pts por ${cat.unidad}`}>
             {(id, d) => (

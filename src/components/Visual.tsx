@@ -55,9 +55,9 @@ export function MapaCampus({ puntos, seleccionado, onSeleccionar }: { puntos: Pu
   )
 }
 
-export function ChipCategoria({ nombre, color }: { nombre: string; color: string }) {
+export function ChipCategoria({ nombre, color, titulo }: { nombre: string; color: string; titulo?: string }) {
   return (
-    <span className="chip-cat">
+    <span className="chip-cat" title={titulo}>
       <i style={{ background: color }} />
       {nombre}
     </span>

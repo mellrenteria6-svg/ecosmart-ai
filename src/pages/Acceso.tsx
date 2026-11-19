@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
+  MODO_SERVIDOR,
+  institucionPorCorreo,
   iniciarSesion,
   reenviarVerificacion,
   registrar,
@@ -128,7 +130,7 @@ export function Ingresar() {
             </button>
           ))}
         </div>
-        <button
+        {!MODO_SERVIDOR && <button
           type="button"
           className="enlace-boton"
           onClick={() => {
@@ -136,7 +138,7 @@ export function Ingresar() {
           }}
         >
           Restablecer datos de demostración
-        </button>
+        </button>}
       </div>
     </MarcoAcceso>
   )
@@ -147,6 +149,9 @@ export function Registro() {
   const [f, setF] = useState({ nombre: '', correo: '', facultad: FACULTADES[0], password: '', consentimiento: false })
   const [listo, setListo] = useState<string | null>(null)
   const { error, cargando, ejecutar } = useAccion()
+  const activas = db.instituciones.filter((i) => i.activa)
+  const detectada = f.correo.includes('@') ? institucionPorCorreo(db, f.correo) : undefined
+  const dominioEscrito = f.correo.split('@')[1] ?? ''
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
@@ -169,13 +174,24 @@ export function Registro() {
   }
 
   return (
-    <MarcoAcceso titulo={<>Crea tu cuenta <em>verde</em>.</>} subtitulo={`Solo para correos @${db.config.dominioInstitucional}.`}>
+    <MarcoAcceso titulo={<>Crea tu cuenta <em>verde</em>.</>} subtitulo={`Con el correo de tu universidad: ${activas.map((i) => i.siglas).join(', ')}.`}>
       <form onSubmit={enviar} className="form">
         {error && <Alerta tono="error">{error}</Alerta>}
         <Campo etiqueta="Nombre completo">
           {(id) => <input id={id} className="input" autoComplete="name" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} required />}
         </Campo>
-        <Campo etiqueta="Correo institucional" ayuda={`Ejemplo: nombre.apellido@${db.config.dominioInstitucional}`}>
+        <Campo
+          etiqueta="Correo institucional"
+          ayuda={
+            detectada ? (
+              <span className="txt-ok">✓ {detectada.nombre}</span>
+            ) : dominioEscrito.includes('.') ? (
+              <span className="txt-warn">@{dominioEscrito} no pertenece a una universidad participante.</span>
+            ) : (
+              <>Dominios aceptados: {activas.flatMap((i) => i.dominios.map((x) => '@' + x)).join(', ')}</>
+            )
+          }
+        >
           {(id, d) => <input id={id} aria-describedby={d} className="input" type="email" autoComplete="email" value={f.correo} onChange={(e) => setF({ ...f, correo: e.target.value })} required />}
         </Campo>
         <Campo etiqueta="Facultad o dependencia">
@@ -213,12 +229,9 @@ export function Verificar() {
   useEffect(() => {
     if (hecho.current) return
     hecho.current = true
-    try {
-      const u = verificarCorreo(token)
-      setEstado({ ok: true, texto: `Listo, ${u.nombre}. Tu correo quedó verificado.` })
-    } catch (e) {
-      setEstado({ ok: false, texto: e instanceof Error ? e.message : 'No se pudo verificar.' })
-    }
+    verificarCorreo(token)
+      .then((u) => setEstado({ ok: true, texto: `Listo, ${u.nombre}. Tu correo quedó verificado.` }))
+      .catch((e) => setEstado({ ok: false, texto: e instanceof Error ? e.message : 'No se pudo verificar.' }))
   }, [token])
   return (
     <MarcoAcceso titulo={estado?.ok ? <>Cuenta <em>verificada</em></> : 'Verificación de correo'}>
@@ -306,7 +319,19 @@ export function Restablecer() {
 
 export function BandejaCorreo() {
   const { db } = useStore()
-  const correos = [...db.correos].reverse()
+  const [remotos, setRemotos] = useState<typeof db.correos | null>(null)
+  useEffect(() => {
+    if (!MODO_SERVIDOR) return
+    const cargar = () =>
+      fetch('/api/correos')
+        .then((r) => r.json())
+        .then((d) => setRemotos(d.correos ?? []))
+        .catch(() => setRemotos([]))
+    cargar()
+    const t = setInterval(cargar, 4000)
+    return () => clearInterval(t)
+  }, [])
+  const correos = MODO_SERVIDOR ? (remotos ?? []) : [...db.correos].reverse()
   return (
     <div className="bandeja">
       <header className="bandeja-cab">

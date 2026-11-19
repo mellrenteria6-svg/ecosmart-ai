@@ -3,7 +3,7 @@
 // datos se ejecuta dentro de `transaccion`, que confirma todo o nada (RF14).
 
 import { useSyncExternalStore } from 'react'
-import { crearDbSemilla } from './seed'
+import { CATEGORIAS_SEMILLA, INSTITUCIONES_SEMILLA, crearDbSemilla } from './seed'
 import type {
   AlertaFraude,
   Auditoria,
@@ -12,6 +12,7 @@ import type {
   Configuracion,
   Db,
   EstadoAlerta,
+  Institucion,
   ElementoCola,
   MovimientoPuntos,
   PuntoReciclaje,
@@ -23,13 +24,69 @@ import type {
   Usuario,
 } from './types'
 
-const CLAVE_DB = 'ecosmart.db.v1'
-const CLAVE_SESION = 'ecosmart.sesion.v1'
-const CLAVE_COLA = 'ecosmart.cola.v1'
+const MODO = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL ? 'srv' : 'v1'
+const CLAVE_DB = `ecosmart.db.${MODO}`
+const CLAVE_SESION = `ecosmart.sesion.${MODO}`
+const CLAVE_COLA = `ecosmart.cola.${MODO}`
 const CLAVE_OFFLINE = 'ecosmart.offline-simulado'
 const HORA = 60 * 60 * 1000
 
 export class ApiError extends Error {}
+
+// ---------------------------------------------------------------------------
+// Modo de datos
+//  - local: todo vive en el navegador (demo publicada sin servidor)
+//  - servidor: las acciones se ejecutan en el servidor Node contra PostgreSQL.
+//    Se activa con VITE_API_URL (por ejemplo /api en desarrollo).
+// ---------------------------------------------------------------------------
+const API_URL: string | undefined = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL
+export const MODO_SERVIDOR = !!API_URL
+
+async function llamarApi<T>(ruta: string, cuerpo?: unknown, metodo = cuerpo === undefined ? 'GET' : 'POST'): Promise<T> {
+  const token = snapshot.sesion?.token
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${ruta}`, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    })
+  } catch {
+    throw new ApiError('No hay conexión con el servidor de EcoSmart AI.')
+  }
+  const datos = (await res.json().catch(() => ({}))) as { error?: string; db?: Db } & Record<string, unknown>
+  if (res.status === 401 && snapshot.sesion) emitir({ sesion: null })
+  if (!res.ok) throw new ApiError(datos.error ?? `Error del servidor (${res.status}).`)
+  if (datos.db) emitir({ db: datos.db })
+  return datos as T
+}
+
+/** En modo servidor, la acción se ejecuta en el servidor; en modo local, aquí mismo. */
+function remoto<A extends unknown[], R>(nombre: string, local: (...args: A) => R) {
+  return async (...args: A): Promise<Awaited<R>> => {
+    if (!MODO_SERVIDOR) return await local(...args)
+    const r = await llamarApi<{ resultado: Awaited<R> }>(`/accion/${nombre}`, { args })
+    return r.resultado
+  }
+}
+
+/** Descarga del servidor la vista de datos que corresponde al usuario. */
+export async function refrescarDesdeServidor() {
+  if (!MODO_SERVIDOR) return
+  try {
+    await llamarApi('/estado')
+  } catch {
+    // sin conexión: se sigue mostrando la copia local
+  }
+}
+
+/** Uso exclusivo del servidor: carga la base leída de PostgreSQL y la devuelve tras la acción. */
+export const motorServidor = {
+  cargar(db: Db) {
+    snapshot = { ...snapshot, db }
+  },
+  db: () => snapshot.db,
+}
 
 // ---------------------------------------------------------------------------
 // Estado y persistencia
@@ -63,7 +120,31 @@ function escribir(clave: string, valor: unknown) {
 
 function cargarDb(): Db {
   const db = leer<Db | null>(CLAVE_DB, null)
-  if (db && db.version === 2) return db
+  if (db && db.version === 2) {
+    // Migración: el clasificador simulado se reemplazó por el modelo CLIP
+    if (db.config.modeloVersion === 'eco-clf-1.0-sim') db.config.modeloVersion = 'clip-vit-b32-q8-zs-1.0'
+    // Migración: categoría "Otros plásticos" y descripción de cada categoría
+    const semilla = CATEGORIAS_SEMILLA
+    semilla.forEach((c) => {
+      const existente = db.categorias.find((x) => x.id === c.id)
+      if (!existente) {
+        db.categorias.push({ ...c })
+        db.historialCategorias.push({ ...c })
+        db.puntos.forEach((p) => {
+          if (['p-biblioteca', 'p-cafeteria', 'p-ingenieria'].includes(p.id) && !p.categorias.includes(c.id)) p.categorias.splice(1, 0, c.id)
+        })
+      } else if (!existente.descripcion) existente.descripcion = c.descripcion
+    })
+    // Migración: varias universidades con sus dominios de correo
+    if (!db.instituciones) db.instituciones = []
+    INSTITUCIONES_SEMILLA.forEach((i) => {
+      if (!db.instituciones.some((x) => x.id === i.id)) db.instituciones.push({ ...i, dominios: [...i.dominios] })
+    })
+    db.usuarios.forEach((u) => {
+      if (!u.institucionId) u.institucionId = institucionPorCorreo(db, u.correo)?.id ?? db.instituciones[0].id
+    })
+    return db
+  }
   const nueva = crearDbSemilla()
   escribir(CLAVE_DB, nueva)
   return nueva
@@ -82,10 +163,10 @@ snapshot.online = navegadorOnline() && !snapshot.offlineSimulado
 
 const oyentes = new Set<() => void>()
 
-function emitir(parcial: Partial<Snapshot>) {
+function emitir(parcial: Partial<Snapshot>, dbYaGuardada = false) {
   snapshot = { ...snapshot, ...parcial }
   snapshot.online = navegadorOnline() && !snapshot.offlineSimulado
-  if ('db' in parcial) escribir(CLAVE_DB, snapshot.db)
+  if ('db' in parcial && !dbYaGuardada) escribir(CLAVE_DB, snapshot.db)
   if ('sesion' in parcial) escribir(CLAVE_SESION, snapshot.sesion)
   if ('cola' in parcial) escribir(CLAVE_COLA, snapshot.cola)
   if ('offlineSimulado' in parcial) escribir(CLAVE_OFFLINE, snapshot.offlineSimulado)
@@ -111,7 +192,15 @@ export function useStore(): Snapshot {
 function transaccion<T>(fn: (d: Db) => T): T {
   const borrador = structuredClone(snapshot.db)
   const resultado = fn(borrador)
-  emitir({ db: borrador })
+  // Se guarda antes de confirmar: si el almacenamiento está lleno no se pierde nada en silencio
+  try {
+    localStorage.setItem(CLAVE_DB, JSON.stringify(borrador))
+  } catch (e) {
+    if (e instanceof DOMException && /quota/i.test(e.name + e.message)) {
+      throw new ApiError('El almacenamiento del navegador está lleno (las fotos ocupan espacio). Restablece los datos de demostración desde la pantalla de ingreso.')
+    }
+  }
+  emitir({ db: borrador }, true)
   return resultado
 }
 
@@ -136,6 +225,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function restablecerDemo() {
+  if (MODO_SERVIDOR) return
   const nueva = crearDbSemilla()
   emitir({ db: nueva, sesion: null, cola: [] })
 }
@@ -144,12 +234,10 @@ export function restablecerDemo() {
 // Utilidades
 // ---------------------------------------------------------------------------
 
+/** Identificador único (UUID, compatible con las llaves de PostgreSQL). */
 export function nuevoId(prefijo: string) {
-  const aleatorio =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(36).slice(2, 10)
-  return `${prefijo}-${Date.now().toString(36)}${aleatorio}`
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `${prefijo}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
 
 export function nuevaClaveIdempotencia() {
@@ -282,6 +370,17 @@ export function puntosAsignados(d: Db, recolectorId: string) {
   return d.puntos.filter((p) => asignacionVigente(d, recolectorId, p.id))
 }
 
+/** Universidad a la que pertenece un correo, según su dominio exacto. */
+export function institucionPorCorreo(d: Db, correo: string): Institucion | undefined {
+  const dominio = correo.trim().toLowerCase().split('@')[1]
+  if (!dominio) return undefined
+  return d.instituciones.find((i) => i.activa && i.dominios.includes(dominio))
+}
+
+export function nombreInstitucion(d: Db, id: string) {
+  return d.instituciones.find((i) => i.id === id)?.siglas ?? '—'
+}
+
 export function usuarioActual(s: Snapshot): Usuario | null {
   if (!s.sesion) return null
   const u = s.db.usuarios.find((x) => x.id === s.sesion!.usuarioId)
@@ -324,11 +423,13 @@ export async function registrar(datos: {
   password: string
   consentimiento: boolean
 }) {
+  if (MODO_SERVIDOR) return (await llamarApi<{ usuario: Usuario }>('/auth/registro', datos)).usuario
   const correo = datos.correo.trim().toLowerCase()
-  const dominio = snapshot.db.config.dominioInstitucional
   if (!datos.nombre.trim()) throw new ApiError('Ingresa tu nombre.')
-  if (!correo.endsWith('@' + dominio)) {
-    throw new ApiError(`Usa tu correo institucional (@${dominio}).`)
+  // RN01 (ajustada): el correo debe pertenecer a una universidad autorizada
+  const institucion = institucionPorCorreo(snapshot.db, correo)
+  if (!institucion) {
+    throw new ApiError('Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
   }
   if (!datos.consentimiento) throw new ApiError('Debes aceptar el aviso de privacidad para continuar.')
   validarPassword(datos.password)
@@ -341,6 +442,7 @@ export async function registrar(datos: {
       id: nuevoId('u'),
       nombre: datos.nombre.trim(),
       correo,
+      institucionId: institucion.id,
       facultad: datos.facultad,
       rol: 'usuario',
       passwordHash,
@@ -365,6 +467,7 @@ export async function registrar(datos: {
 }
 
 export function reenviarVerificacion(correo: string) {
+  if (MODO_SERVIDOR) return void llamarApi('/auth/reenviar', { correo }).catch(() => {})
   transaccion((d) => {
     const u = d.usuarios.find((x) => x.correo === correo.trim().toLowerCase())
     if (!u || u.verificado) return
@@ -373,7 +476,8 @@ export function reenviarVerificacion(correo: string) {
   })
 }
 
-export function verificarCorreo(token: string) {
+export async function verificarCorreo(token: string): Promise<Usuario> {
+  if (MODO_SERVIDOR) return (await llamarApi<{ usuario: Usuario }>('/auth/verificar', { token })).usuario
   return transaccion((d) => {
     const t = consumirToken(d, token, 'verificacion')
     const u = actor(d, t.usuarioId)
@@ -386,6 +490,14 @@ export function verificarCorreo(token: string) {
 export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario } | { tipo: 'segundo_factor'; usuarioId: string }
 
 export async function iniciarSesion(correoIn: string, password: string): Promise<ResultadoLogin> {
+  if (MODO_SERVIDOR) {
+    const r = await llamarApi<ResultadoLogin & { sesion?: Sesion }>('/auth/login', { correo: correoIn, password })
+    if (r.sesion) {
+      emitir({ sesion: r.sesion })
+      await refrescarDesdeServidor()
+    }
+    return r.tipo === 'ok' ? { tipo: 'ok', usuario: snapshot.db.usuarios.find((u) => u.id === r.sesion!.usuarioId)! } : r
+  }
   const correo = correoIn.trim().toLowerCase()
   const hash = await hashPassword(correo, password)
   // Los intentos fallidos se guardan aunque el login falle, por eso el error se devuelve y no se lanza.
@@ -425,7 +537,13 @@ export async function iniciarSesion(correoIn: string, password: string): Promise
   return resultado
 }
 
-export function verificarSegundoFactor(usuarioId: string, codigo: string) {
+export async function verificarSegundoFactor(usuarioId: string, codigo: string): Promise<Usuario> {
+  if (MODO_SERVIDOR) {
+    const r = await llamarApi<{ sesion: Sesion }>('/auth/segundo-factor', { usuarioId, codigo })
+    emitir({ sesion: r.sesion })
+    await refrescarDesdeServidor()
+    return snapshot.db.usuarios.find((u) => u.id === r.sesion.usuarioId)!
+  }
   const u = transaccion((d) => {
     consumirToken(d, codigo.trim(), 'segundo_factor', usuarioId)
     const usuario = actor(d, usuarioId)
@@ -438,6 +556,12 @@ export function verificarSegundoFactor(usuarioId: string, codigo: string) {
 
 export function cerrarSesion() {
   const s = snapshot.sesion
+  if (MODO_SERVIDOR) {
+    if (s) void llamarApi('/auth/logout', {}).catch(() => {})
+    emitir({ sesion: null })
+    void refrescarDesdeServidor()
+    return
+  }
   if (s) {
     transaccion((d) => {
       const u = d.usuarios.find((x) => x.id === s.usuarioId)
@@ -448,6 +572,7 @@ export function cerrarSesion() {
 }
 
 export function solicitarRestablecimiento(correoIn: string) {
+  if (MODO_SERVIDOR) return void llamarApi('/auth/recuperar', { correo: correoIn }).catch(() => {})
   const correo = correoIn.trim().toLowerCase()
   transaccion((d) => {
     const u = d.usuarios.find((x) => x.correo === correo)
@@ -459,6 +584,11 @@ export function solicitarRestablecimiento(correoIn: string) {
 
 export async function restablecerPassword(token: string, password: string) {
   validarPassword(password)
+  if (MODO_SERVIDOR) {
+    await llamarApi('/auth/restablecer', { token, password })
+    emitir({ sesion: null })
+    return
+  }
   const t = snapshot.db.tokens.find((x) => x.token === token && x.tipo === 'restablecer')
   const u = t && snapshot.db.usuarios.find((x) => x.id === t.usuarioId)
   if (!t || !u) throw new ApiError('El enlace no es válido.')
@@ -493,7 +623,7 @@ export function puntoPorCodigo(codigoIn: string) {
   return p
 }
 
-export function guardarPunto(adminId: string, datos: Omit<PuntoReciclaje, 'id' | 'codigoQr'> & { id?: string }) {
+function guardarPunto__local(adminId: string, datos: Omit<PuntoReciclaje, 'id' | 'codigoQr'> & { id?: string }) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (!datos.nombre.trim()) throw new ApiError('El punto necesita un nombre.')
@@ -529,7 +659,9 @@ export function guardarPunto(adminId: string, datos: Omit<PuntoReciclaje, 'id' |
 // Categorías y configuración (RF16, RF29)
 // ---------------------------------------------------------------------------
 
-export function actualizarCategoria(adminId: string, id: string, cambios: Pick<CategoriaResiduo, 'unidad' | 'puntosPorUnidad' | 'minimo' | 'maximo'>) {
+function actualizarCategoria__local(adminId: string, id: string, cambiosIn: Pick<CategoriaResiduo, 'unidad' | 'puntosPorUnidad' | 'minimo' | 'maximo' | 'descripcion'>) {
+  const { unidad, puntosPorUnidad, minimo, maximo, descripcion } = cambiosIn
+  const cambios = { unidad, puntosPorUnidad, minimo, maximo, descripcion: descripcion?.trim() || undefined }
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const c = d.categorias.find((x) => x.id === id)
@@ -545,7 +677,7 @@ export function actualizarCategoria(adminId: string, id: string, cambios: Pick<C
   })
 }
 
-export function actualizarConfig(adminId: string, cambios: Partial<Configuracion>) {
+function actualizarConfig__local(adminId: string, cambios: Partial<Configuracion>) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (cambios.topeDiario !== undefined && !(cambios.topeDiario >= 1)) throw new ApiError('El tope diario debe ser al menos 1.')
@@ -590,7 +722,7 @@ export interface DatosReciclaje {
   creadoEn?: number
 }
 
-export function registrarReciclaje(datos: DatosReciclaje): { reciclaje: Reciclaje; repetido: boolean } {
+function registrarReciclaje__local(datos: DatosReciclaje): { reciclaje: Reciclaje; repetido: boolean } {
   // Idempotencia: la misma clave devuelve el mismo resultado (RNF03, RN16)
   const existente = snapshot.db.reciclajes.find((r) => r.idempotencyKey === datos.idempotencyKey)
   if (existente) return { reciclaje: existente, repetido: true }
@@ -707,8 +839,8 @@ export async function sincronizarCola() {
       await new Promise((r) => setTimeout(r, 700))
       try {
         // El servidor vuelve a validar punto, categoría, tope e idempotencia (RN16)
-        const { reciclaje } = registrarReciclaje({ ...item, creadoEn: item.creadoEn })
-        transaccion((d) => notificar(d, item.usuarioId, 'Reciclaje sincronizado', `Tu registro guardado sin conexión quedó ${reciclaje.estado === 'en_revision' ? 'en revisión' : 'pendiente de validación'}.`))
+        const { reciclaje } = await registrarReciclaje({ ...item, creadoEn: item.creadoEn })
+        if (!MODO_SERVIDOR) transaccion((d) => notificar(d, item.usuarioId, 'Reciclaje sincronizado', `Tu registro guardado sin conexión quedó ${reciclaje.estado === 'en_revision' ? 'en revisión' : 'pendiente de validación'}.`))
         emitir({ cola: snapshot.cola.filter((c) => c.idempotencyKey !== item.idempotencyKey) })
       } catch (e) {
         const motivo = e instanceof Error ? e.message : 'Error desconocido'
@@ -732,7 +864,7 @@ export interface Decision {
   motivoRechazo?: string
 }
 
-export function cerrarLote(recolectorId: string, puntoId: string, decisiones: Decision[], individual = false) {
+function cerrarLote__local(recolectorId: string, puntoId: string, decisiones: Decision[], individual = false) {
   if (!decisiones.length) throw new ApiError('Selecciona al menos un registro.')
   return transaccion((d) => {
     const rec = actor(d, recolectorId)
@@ -802,7 +934,7 @@ export function recompensaDisponible(r: Recompensa) {
   return r.activa && r.stock > 0 && r.vigenciaDesde <= hoy && r.vigenciaHasta >= hoy
 }
 
-export function guardarRecompensa(adminId: string, datosIn: Omit<Recompensa, 'id'> & { id?: string }) {
+function guardarRecompensa__local(adminId: string, datosIn: Omit<Recompensa, 'id'> & { id?: string }) {
   return transaccion((d) => {
     const quien = requiereRol(d, adminId, 'admin', 'aliado')
     const datos = { ...datosIn }
@@ -857,6 +989,7 @@ function esSorteo(d: Db, c: Canje) {
 }
 
 export function procesarVencimientos() {
+  if (MODO_SERVIDOR) return // el servidor vence los canjes en cada consulta
   const ahora = Date.now()
   const vence = (d: Db, c: Canje) => c.estado === 'pendiente' && c.venceEn <= ahora && !esSorteo(d, c)
   if (!snapshot.db.canjes.some((c) => vence(snapshot.db, c))) return
@@ -867,7 +1000,7 @@ export function procesarVencimientos() {
   })
 }
 
-export function crearCanje(usuarioId: string, recompensaId: string, idempotencyKey: string) {
+function crearCanje__local(usuarioId: string, recompensaId: string, idempotencyKey: string) {
   const existente = snapshot.db.canjes.find((c) => c.idempotencyKey === idempotencyKey)
   if (existente) return existente // una petición repetida no crea dos canjes
   return transaccion((d) => {
@@ -910,7 +1043,7 @@ export function crearCanje(usuarioId: string, recompensaId: string, idempotencyK
   })
 }
 
-export function cancelarCanje(usuarioId: string, canjeId: string) {
+function cancelarCanje__local(usuarioId: string, canjeId: string) {
   transaccion((d) => {
     const c = d.canjes.find((x) => x.id === canjeId)
     if (!c || c.usuarioId !== usuarioId) throw new ApiError('Canje no encontrado.')
@@ -926,7 +1059,7 @@ export function buscarCanje(codigo: string) {
   return c
 }
 
-export function entregarCanje(entregaId: string, codigo: string) {
+function entregarCanje__local(entregaId: string, codigo: string) {
   procesarVencimientos()
   return transaccion((d) => {
     requiereRol(d, entregaId, 'admin', 'aliado')
@@ -952,7 +1085,7 @@ export function entregarCanje(entregaId: string, codigo: string) {
 // Administración de usuarios y asignaciones (RF25, RF28)
 // ---------------------------------------------------------------------------
 
-export function cambiarRol(adminId: string, usuarioId: string, rol: Rol) {
+function cambiarRol__local(adminId: string, usuarioId: string, rol: Rol) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (adminId === usuarioId) throw new ApiError('No puedes cambiar tu propio rol.')
@@ -969,7 +1102,7 @@ export function cambiarRol(adminId: string, usuarioId: string, rol: Rol) {
   })
 }
 
-export function cambiarBloqueo(adminId: string, usuarioId: string, bloquear: boolean, motivo: string) {
+function cambiarBloqueo__local(adminId: string, usuarioId: string, bloquear: boolean, motivo: string) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (adminId === usuarioId) throw new ApiError('No puedes bloquear tu propia cuenta.')
@@ -987,7 +1120,7 @@ export function cambiarBloqueo(adminId: string, usuarioId: string, bloquear: boo
   })
 }
 
-export function crearAjuste(adminId: string, usuarioId: string, puntos: number, motivo: string) {
+function crearAjuste__local(adminId: string, usuarioId: string, puntos: number, motivo: string) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (!Number.isInteger(puntos) || puntos === 0) throw new ApiError('El ajuste debe ser un número entero distinto de cero.')
@@ -1000,7 +1133,7 @@ export function crearAjuste(adminId: string, usuarioId: string, puntos: number, 
   })
 }
 
-export function crearAsignacion(adminId: string, datos: { recolectorId: string; puntoId: string; desde: string; hasta: string; horario: string }) {
+function crearAsignacion__local(adminId: string, datos: { recolectorId: string; puntoId: string; desde: string; hasta: string; horario: string }) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const rec = actor(d, datos.recolectorId)
@@ -1018,7 +1151,7 @@ export function crearAsignacion(adminId: string, datos: { recolectorId: string; 
   })
 }
 
-export function desactivarAsignacion(adminId: string, asignacionId: string) {
+function desactivarAsignacion__local(adminId: string, asignacionId: string) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const a = d.asignaciones.find((x) => x.id === asignacionId)
@@ -1032,7 +1165,7 @@ export function desactivarAsignacion(adminId: string, asignacionId: string) {
 // Notificaciones
 // ---------------------------------------------------------------------------
 
-export function marcarNotificacionesLeidas(usuarioId: string) {
+function marcarNotificacionesLeidas__local(usuarioId: string) {
   if (!snapshot.db.notificaciones.some((n) => n.usuarioId === usuarioId && !n.leida)) return
   transaccion((d) => {
     d.notificaciones.forEach((n) => {
@@ -1045,7 +1178,7 @@ export function marcarNotificacionesLeidas(usuarioId: string) {
 // Sorteos (recompensas no comerciales)
 // ---------------------------------------------------------------------------
 
-export function realizarSorteo(adminId: string, recompensaId: string) {
+function realizarSorteo__local(adminId: string, recompensaId: string) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const rw = d.recompensas.find((x) => x.id === recompensaId)
@@ -1074,7 +1207,7 @@ export function realizarSorteo(adminId: string, recompensaId: string) {
 // Categorías: crear y eliminar (RF09)
 // ---------------------------------------------------------------------------
 
-export function crearCategoria(adminId: string, datos: Omit<CategoriaResiduo, 'id' | 'version' | 'activa'>) {
+function crearCategoria__local(adminId: string, datos: Omit<CategoriaResiduo, 'id' | 'version' | 'activa'>) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     if (!datos.nombre.trim()) throw new ApiError('La categoría necesita un nombre.')
@@ -1091,7 +1224,7 @@ export function crearCategoria(adminId: string, datos: Omit<CategoriaResiduo, 'i
 }
 
 /** Borra la categoría si nunca se usó; si tiene registros, la desactiva para conservar el historial. */
-export function eliminarCategoria(adminId: string, id: string) {
+function eliminarCategoria__local(adminId: string, id: string) {
   return transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const c = d.categorias.find((x) => x.id === id)
@@ -1109,7 +1242,7 @@ export function eliminarCategoria(adminId: string, id: string) {
   })
 }
 
-export function reactivarCategoria(adminId: string, id: string) {
+function reactivarCategoria__local(adminId: string, id: string) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const c = d.categorias.find((x) => x.id === id)
@@ -1123,7 +1256,7 @@ export function reactivarCategoria(adminId: string, id: string) {
 // Alertas antifraude (RF26) y preferencias del ranking (RF07)
 // ---------------------------------------------------------------------------
 
-export function resolverAlerta(adminId: string, id: string, estado: Exclude<EstadoAlerta, 'abierta'>, resolucion: string) {
+function resolverAlerta__local(adminId: string, id: string, estado: Exclude<EstadoAlerta, 'abierta'>, resolucion: string) {
   transaccion((d) => {
     requiereRol(d, adminId, 'admin')
     const a = d.alertas.find((x) => x.id === id)
@@ -1138,9 +1271,98 @@ export function resolverAlerta(adminId: string, id: string, estado: Exclude<Esta
   })
 }
 
-export function cambiarAnonimatoRanking(usuarioId: string, anonimo: boolean) {
+function cambiarAnonimatoRanking__local(usuarioId: string, anonimo: boolean) {
   transaccion((d) => {
     const u = actor(d, usuarioId)
     u.rankingAnonimo = anonimo
   })
 }
+
+// ---------------------------------------------------------------------------
+// Universidades participantes (RN01 ajustada: varios dominios autorizados)
+// ---------------------------------------------------------------------------
+
+const DOMINIO_VALIDO = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
+
+function guardarInstitucion__local(adminId: string, datos: Omit<Institucion, 'id'> & { id?: string }) {
+  return transaccion((d) => {
+    requiereRol(d, adminId, 'admin')
+    const nombre = datos.nombre.trim()
+    const siglas = datos.siglas.trim().toUpperCase()
+    if (!nombre || !siglas) throw new ApiError('Indica el nombre y las siglas de la universidad.')
+    const dominios = [...new Set(datos.dominios.map((x) => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))]
+    if (!dominios.length) throw new ApiError('Agrega al menos un dominio de correo.')
+    const invalido = dominios.find((x) => !DOMINIO_VALIDO.test(x))
+    if (invalido) throw new ApiError(`"${invalido}" no es un dominio válido. Ejemplo: espol.edu.ec`)
+    for (const dom of dominios) {
+      const otra = d.instituciones.find((i) => i.id !== datos.id && i.dominios.includes(dom))
+      if (otra) throw new ApiError(`El dominio ${dom} ya pertenece a ${otra.siglas}.`)
+    }
+    if (d.instituciones.some((i) => i.id !== datos.id && i.siglas === siglas)) throw new ApiError(`Ya existe una universidad con las siglas ${siglas}.`)
+    if (datos.id) {
+      const i = d.instituciones.find((x) => x.id === datos.id)
+      if (!i) throw new ApiError('Universidad no encontrada.')
+      const antes = `${i.dominios.join(', ')}${i.activa ? '' : ' (inactiva)'}`
+      Object.assign(i, { nombre, siglas, dominios, activa: datos.activa })
+      auditar(d, adminId, 'Actualizar universidad', 'INSTITUCION', i.id, `${siglas}: ${antes} → ${dominios.join(', ')}${datos.activa ? '' : ' (inactiva)'}`)
+      return i
+    }
+    const nueva: Institucion = { id: nuevoId('inst'), nombre, siglas, dominios, activa: datos.activa }
+    d.instituciones.push(nueva)
+    auditar(d, adminId, 'Agregar universidad', 'INSTITUCION', nueva.id, `${siglas}: ${dominios.join(', ')}`)
+    return nueva
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Acciones públicas: locales o remotas según el modo
+// ---------------------------------------------------------------------------
+export const guardarPunto = remoto('guardarPunto', guardarPunto__local)
+export const actualizarCategoria = remoto('actualizarCategoria', actualizarCategoria__local)
+export const actualizarConfig = remoto('actualizarConfig', actualizarConfig__local)
+export const registrarReciclaje = remoto('registrarReciclaje', registrarReciclaje__local)
+export const cerrarLote = remoto('cerrarLote', cerrarLote__local)
+export const guardarRecompensa = remoto('guardarRecompensa', guardarRecompensa__local)
+export const crearCanje = remoto('crearCanje', crearCanje__local)
+export const cancelarCanje = remoto('cancelarCanje', cancelarCanje__local)
+export const entregarCanje = remoto('entregarCanje', entregarCanje__local)
+export const cambiarRol = remoto('cambiarRol', cambiarRol__local)
+export const cambiarBloqueo = remoto('cambiarBloqueo', cambiarBloqueo__local)
+export const crearAjuste = remoto('crearAjuste', crearAjuste__local)
+export const crearAsignacion = remoto('crearAsignacion', crearAsignacion__local)
+export const desactivarAsignacion = remoto('desactivarAsignacion', desactivarAsignacion__local)
+export const marcarNotificacionesLeidas = remoto('marcarNotificacionesLeidas', marcarNotificacionesLeidas__local)
+export const realizarSorteo = remoto('realizarSorteo', realizarSorteo__local)
+export const crearCategoria = remoto('crearCategoria', crearCategoria__local)
+export const eliminarCategoria = remoto('eliminarCategoria', eliminarCategoria__local)
+export const reactivarCategoria = remoto('reactivarCategoria', reactivarCategoria__local)
+export const resolverAlerta = remoto('resolverAlerta', resolverAlerta__local)
+export const cambiarAnonimatoRanking = remoto('cambiarAnonimatoRanking', cambiarAnonimatoRanking__local)
+export const guardarInstitucion = remoto('guardarInstitucion', guardarInstitucion__local)
+
+/** Implementaciones locales, usadas por el servidor para aplicar las mismas reglas. */
+export const accionesLocales = {
+  guardarPunto: guardarPunto__local,
+  actualizarCategoria: actualizarCategoria__local,
+  actualizarConfig: actualizarConfig__local,
+  registrarReciclaje: registrarReciclaje__local,
+  cerrarLote: cerrarLote__local,
+  guardarRecompensa: guardarRecompensa__local,
+  crearCanje: crearCanje__local,
+  cancelarCanje: cancelarCanje__local,
+  entregarCanje: entregarCanje__local,
+  cambiarRol: cambiarRol__local,
+  cambiarBloqueo: cambiarBloqueo__local,
+  crearAjuste: crearAjuste__local,
+  crearAsignacion: crearAsignacion__local,
+  desactivarAsignacion: desactivarAsignacion__local,
+  marcarNotificacionesLeidas: marcarNotificacionesLeidas__local,
+  realizarSorteo: realizarSorteo__local,
+  crearCategoria: crearCategoria__local,
+  eliminarCategoria: eliminarCategoria__local,
+  reactivarCategoria: reactivarCategoria__local,
+  resolverAlerta: resolverAlerta__local,
+  cambiarAnonimatoRanking: cambiarAnonimatoRanking__local,
+  guardarInstitucion: guardarInstitucion__local,
+}
+export type NombreAccion = keyof typeof accionesLocales

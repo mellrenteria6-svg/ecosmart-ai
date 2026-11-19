@@ -67,7 +67,7 @@ const ROLES = [
   },
 ]
 
-const MATERIALES = ['Plástico PET', 'Papel y cartón', 'Vidrio', 'Latas de aluminio', 'Tetra Pak']
+const MATERIALES = ['Botellas PET', 'Otros plásticos', 'Papel y cartón', 'Vidrio', 'Latas de aluminio', 'Tetra Pak']
 
 export function Portada() {
   const { db } = useStore()
@@ -145,7 +145,7 @@ export function Portada() {
             <div className="telefono-isla" />
             <div className="tel-pantalla">
               <div className="tel-top">
-                <span>Hola, Valeria</span>
+                <span>Mi EcoSmart</span>
                 <span className="tel-pill">En línea</span>
               </div>
               <div className="tel-saldo">

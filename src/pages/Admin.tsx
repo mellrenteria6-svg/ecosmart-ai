@@ -12,13 +12,15 @@ import {
   desactivarAsignacion,
   entregarCanje,
   guardarPunto,
+  guardarInstitucion,
   guardarRecompensa,
   hoyIso,
+  nombreInstitucion,
   realizarSorteo,
   saldoConfirmado,
   useStore,
 } from '../data/store'
-import type { Canje, CategoriaResiduo, EstadoPunto, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
+import type { Canje, CategoriaResiduo, EstadoPunto, Institucion, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
 import { Alerta, Badge, Campo, Encabezado, EstadoBadge, Modal, Stat, Vacio, useAccion } from '../components/ui'
 import { ChipCategoria, MapaCampus, Qr, enlaceQr } from '../components/Visual'
 import { ETIQUETA_CANJE, ETIQUETA_PUNTO, ETIQUETA_RECICLAJE, ETIQUETA_ROL, fmtFecha, fmtFechaHora, fmtNumero, fmtPct, hace } from '../lib/formato'
@@ -323,8 +325,8 @@ export function AdminPuntos({ usuario }: { usuario: Usuario }) {
             className="form"
             onSubmit={async (e) => {
               e.preventDefault()
-              const ok = await ejecutar(() => {
-                crearAsignacion(usuario.id, { ...nuevaAsig, puntoId: asignar })
+              const ok = await ejecutar(async () => {
+                await crearAsignacion(usuario.id, { ...nuevaAsig, puntoId: asignar })
                 return true
               })
               if (ok) setAsignar(null)
@@ -381,7 +383,15 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
           <tbody>
             {db.categorias.map((c) => (
               <tr key={c.id}>
-                <td><ChipCategoria nombre={c.nombre} color={c.color} /></td>
+                <td>
+                  <ChipCategoria nombre={c.nombre} color={c.color} />
+                  {c.descripcion && (
+                    <>
+                      <br />
+                      <small className="txt-muted">{c.descripcion}</small>
+                    </>
+                  )}
+                </td>
                 <td>{c.unidad}</td>
                 <td className="num">{c.puntosPorUnidad}</td>
                 <td className="num">{c.minimo} – {c.maximo}</td>
@@ -402,8 +412,8 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
           onSubmit={async (e) => {
             e.preventDefault()
             setOkCfg(false)
-            const ok = await accCfg.ejecutar(() => {
-              actualizarConfig(usuario.id, { topeDiario: cfg.topeDiario, umbralConfianza: cfg.umbralConfianza, horasVencimientoCanje: cfg.horasVencimientoCanje })
+            const ok = await accCfg.ejecutar(async () => {
+              await actualizarConfig(usuario.id, { topeDiario: cfg.topeDiario, umbralConfianza: cfg.umbralConfianza, horasVencimientoCanje: cfg.horasVencimientoCanje })
               return true
             })
             if (ok) setOkCfg(true)
@@ -418,7 +428,7 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
           </div>
           {accCfg.error && <Alerta tono="error">{accCfg.error}</Alerta>}
         </form>
-        <p className="nota">Retención de fotos: {db.config.diasRetencionFotos} días · Dominio institucional: @{db.config.dominioInstitucional}</p>
+        <p className="nota">Retención de fotos: {db.config.diasRetencionFotos} días · Universidades y dominios de correo: <a href="#/admin/instituciones">gestionar</a></p>
       </section>
 
       <Modal abierto={!!sel} titulo={`Editar ${sel?.nombre ?? ''}`} onCerrar={() => setSel(null)}>
@@ -431,6 +441,9 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
               if (ok) setSel(null)
             }}
           >
+            <Campo etiqueta="Qué incluye" ayuda="Se muestra al usuario para que sepa qué residuos van en esta categoría.">
+              {(id, d) => <input id={id} aria-describedby={d} className="input" value={sel.descripcion ?? ''} onChange={(e) => setSel({ ...sel, descripcion: e.target.value })} />}
+            </Campo>
             <Campo etiqueta="Unidad de medida">{(id) => <input id={id} className="input" value={sel.unidad} onChange={(e) => setSel({ ...sel, unidad: e.target.value })} />}</Campo>
             <Campo etiqueta="Puntos por unidad">{(id) => <input id={id} className="input" type="number" step="0.5" value={sel.puntosPorUnidad} onChange={(e) => setSel({ ...sel, puntosPorUnidad: Number(e.target.value) })} />}</Campo>
             <div className="form-2">
@@ -666,6 +679,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
           <thead>
             <tr>
               <th>Usuario</th>
+              <th>Universidad</th>
               <th>Rol</th>
               <th>Estado</th>
               <th className="num">Saldo</th>
@@ -681,6 +695,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
                   <br />
                   <small className="txt-muted">{x.correo}</small>
                 </td>
+                <td>{nombreInstitucion(db, x.institucionId)}</td>
                 <td>{ETIQUETA_ROL[x.rol]}</td>
                 <td>{x.bloqueado ? <Badge tono="error">Bloqueado</Badge> : x.verificado ? <Badge tono="ok">Activo</Badge> : <Badge tono="warn">Sin verificar</Badge>}</td>
                 <td className="num">{x.rol === 'usuario' ? fmtNumero(saldoConfirmado(db, x.id)) : '—'}</td>
@@ -725,7 +740,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
                 <div className="form-linea">
                   <input className="input input-num" type="number" value={ajuste.puntos} onChange={(e) => setAjuste({ ...ajuste, puntos: Number(e.target.value) })} aria-label="Puntos del ajuste" />
                   <input className="input" placeholder="Motivo del ajuste" value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} aria-label="Motivo del ajuste" />
-                  <button type="button" className="btn btn-tinta" onClick={async () => { const ok = await ejecutar(() => { crearAjuste(usuario.id, u.id, ajuste.puntos, ajuste.motivo); return true }); if (ok) setAjuste({ puntos: 0, motivo: '' }) }}>Aplicar</button>
+                  <button type="button" className="btn btn-tinta" onClick={async () => { const ok = await ejecutar(async () => { await crearAjuste(usuario.id, u.id, ajuste.puntos, ajuste.motivo); return true }); if (ok) setAjuste({ puntos: 0, motivo: '' }) }}>Aplicar</button>
                 </div>
               </fieldset>
             )}
@@ -777,6 +792,85 @@ export function Auditoria() {
           ))}
         </ol>
       )}
+    </div>
+  )
+}
+
+// Universidades participantes y sus dominios de correo (RN01 ajustada)
+export function AdminInstituciones({ usuario }: { usuario: Usuario }) {
+  const { db } = useStore()
+  const [ed, setEd] = useState<(Omit<Institucion, 'id' | 'dominios'> & { id?: string; dominiosTexto: string }) | null>(null)
+  const { error, setError, ejecutar } = useAccion()
+
+  return (
+    <div className="pagina">
+      <Encabezado
+        titulo="Universidades"
+        descripcion="Solo pueden registrarse correos de estos dominios. Cada persona queda asignada a su universidad según su correo."
+        acciones={
+          <button type="button" className="btn btn-tinta" onClick={() => { setError(null); setEd({ nombre: '', siglas: '', dominiosTexto: '', activa: true }) }}>
+            + Agregar universidad
+          </button>
+        }
+      />
+      <div className="instituciones">
+        {db.instituciones.map((i) => {
+          const usuarios = db.usuarios.filter((u) => u.institucionId === i.id)
+          const ids = new Set(usuarios.map((u) => u.id))
+          const reciclajes = db.reciclajes.filter((r) => ids.has(r.usuarioId) && r.estado === 'validado').length
+          return (
+            <article key={i.id} className={`institucion ${i.activa ? '' : 'institucion-off'}`}>
+              <div className="inst-cab">
+                <span className="inst-siglas">{i.siglas}</span>
+                {i.activa ? <Badge tono="ok">Activa</Badge> : <Badge>Inactiva</Badge>}
+              </div>
+              <h3>{i.nombre}</h3>
+              <div className="chips">
+                {i.dominios.map((x) => (
+                  <span key={x} className="codigo-mono">@{x}</span>
+                ))}
+              </div>
+              <div className="inst-nums">
+                <span>
+                  <b>{usuarios.filter((u) => u.rol === 'usuario').length}</b> usuarios
+                </span>
+                <span>
+                  <b>{reciclajes}</b> reciclajes validados
+                </span>
+              </div>
+              <button type="button" className="btn btn-fantasma btn-sm" onClick={() => { setError(null); setEd({ ...i, dominiosTexto: i.dominios.join(', ') }) }}>
+                Editar
+              </button>
+            </article>
+          )
+        })}
+      </div>
+      <p className="nota">Desactivar una universidad impide nuevos registros con sus dominios; las cuentas existentes y su historial se conservan.</p>
+
+      <Modal abierto={!!ed} titulo={ed?.id ? 'Editar universidad' : 'Agregar universidad'} onCerrar={() => setEd(null)}>
+        {ed && (
+          <form
+            className="form"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const ok = await ejecutar(() => guardarInstitucion(usuario.id, { id: ed.id, nombre: ed.nombre, siglas: ed.siglas, activa: ed.activa, dominios: ed.dominiosTexto.split(/[\s,;]+/) }))
+              if (ok) setEd(null)
+            }}
+          >
+            <Campo etiqueta="Nombre">{(id) => <input id={id} className="input" value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} placeholder="Escuela Superior Politécnica del Litoral" required />}</Campo>
+            <Campo etiqueta="Siglas">{(id) => <input id={id} className="input" value={ed.siglas} onChange={(e) => setEd({ ...ed, siglas: e.target.value })} placeholder="ESPOL" required />}</Campo>
+            <Campo etiqueta="Dominios de correo" ayuda="Separa con comas. Incluye el de estudiantes y el de personal si son distintos, por ejemplo: ucsg.edu.ec, cu.ucsg.edu.ec">
+              {(id, d) => <input id={id} aria-describedby={d} className="input input-mono" value={ed.dominiosTexto} onChange={(e) => setEd({ ...ed, dominiosTexto: e.target.value })} placeholder="espol.edu.ec" required />}
+            </Campo>
+            <label className="check">
+              <input type="checkbox" checked={ed.activa} onChange={(e) => setEd({ ...ed, activa: e.target.checked })} />
+              <span>Activa: acepta nuevos registros</span>
+            </label>
+            {error && <Alerta tono="error">{error}</Alerta>}
+            <button className="btn btn-tinta btn-bloque">Guardar</button>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }
