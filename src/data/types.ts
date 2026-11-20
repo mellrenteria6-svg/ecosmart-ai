@@ -29,6 +29,7 @@ export interface Usuario {
   creadoEn: number
   consentimientoPrivacidad: boolean
   rankingAnonimo?: boolean // RF07: ocultar identidad pública en el EcoRanking
+  eliminadoEn?: number // RNF05: cuenta eliminada por su titular (datos anonimizados)
 }
 
 export type EstadoPunto = 'activo' | 'inactivo' | 'mantenimiento'

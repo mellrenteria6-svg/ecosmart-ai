@@ -4503,3 +4503,36 @@ textarea.input {
     width: 100%;
   }
 }
+
+/* Privacidad */
+.zona-peligro {
+  border-color: #e3a49c;
+}
+.zona-peligro .h-bloque {
+  color: var(--error);
+}
+.lista-efectos {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.enlaces-fila,
+.shell-footer-links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.aviso-privacidad ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  line-height: 1.6;
+}
+.aviso-privacidad .pagina,
+.aviso-privacidad {
+  padding: 32px 0 60px;
+}

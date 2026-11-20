@@ -1,0 +1,35 @@
+# Integración continua (RNF10): cada cambio ejecuta lint, revisión de tipos,
+# pruebas unitarias, pruebas de integración con PostgreSQL y construcción.
+# Si algún paso falla, el cambio queda marcado como fallido y no debe integrarse.
+name: Verificación
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tipos del servidor y las pruebas
+        run: npm run typecheck:servidor
+
+      - name: Pruebas unitarias e integración (PostgreSQL en memoria)
+        run: npm test
+
+      - name: Construcción
+        run: npm run build

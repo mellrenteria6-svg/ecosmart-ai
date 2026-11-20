@@ -26,7 +26,7 @@ import {
 } from '../data/store'
 import type { AlertaFraude, Canje, CategoriaResiduo, EstadoPunto, Institucion, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
 import { Alerta, Badge, Campo, Encabezado, EstadoBadge, Modal, Stat, Vacio, useAccion } from '../components/ui'
-import { ChipCategoria, MapaCampus, Qr, enlaceQr } from '../components/Visual'
+import { ChipCategoria, MapaCampus, Qr, enlaceQr, fotoVisible } from '../components/Visual'
 import { ETIQUETA_CANJE, ETIQUETA_PUNTO, ETIQUETA_RECICLAJE, ETIQUETA_ROL, fmtFecha, fmtFechaHora, fmtNumero, fmtPct, hace } from '../lib/formato'
 
 const DIA = 86_400_000
@@ -797,7 +797,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
                 </td>
                 <td>{nombreInstitucion(db, x.institucionId)}</td>
                 <td>{ETIQUETA_ROL[x.rol]}</td>
-                <td>{x.bloqueado ? <Badge tono="error">Bloqueado</Badge> : x.verificado ? <Badge tono="ok">Activo</Badge> : <Badge tono="warn">Sin verificar</Badge>}</td>
+                <td>{x.eliminadoEn ? <Badge>Eliminada</Badge> : x.bloqueado ? <Badge tono="error">Bloqueado</Badge> : x.verificado ? <Badge tono="ok">Activo</Badge> : <Badge tono="warn">Sin verificar</Badge>}</td>
                 <td className="num">{x.rol === 'usuario' ? fmtNumero(saldoConfirmado(db, x.id)) : '—'}</td>
                 <td className="num">{db.reciclajes.filter((r) => r.usuarioId === x.id).length}</td>
                 <td className="num">
@@ -1014,7 +1014,7 @@ export function AdminAlertas({ usuario }: { usuario: Usuario }) {
             const quien = a.resueltoPor ? db.usuarios.find((x) => x.id === a.resueltoPor)?.nombre : undefined
             return (
               <li key={a.id} className={`alerta-card alerta-card-${a.estado}`}>
-                {r?.foto ? <img src={r.foto} alt="Foto del registro relacionado" className="miniatura miniatura-lg" /> : <span className="alerta-icono" aria-hidden="true">!</span>}
+                {r ? <img src={fotoVisible(r.foto)} alt="Foto del registro relacionado" className="miniatura miniatura-lg" /> : <span className="alerta-icono" aria-hidden="true">!</span>}
                 <div className="alerta-info">
                   <div className="alerta-cab">
                     <b>{a.regla}</b>

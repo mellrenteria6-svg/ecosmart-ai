@@ -63,3 +63,12 @@ export function ChipCategoria({ nombre, color, titulo }: { nombre: string; color
     </span>
   )
 }
+
+const FOTO_ELIMINADA =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#ebe3d4"/><path d="M130 95h60l8 14h18v60h-112v-60h18z" fill="none" stroke="#9a907f" stroke-width="5"/><path d="M110 70l100 110" stroke="#9a907f" stroke-width="5"/><text x="160" y="212" font-family="sans-serif" font-size="15" fill="#6b6a5e" text-anchor="middle">Foto eliminada (privacidad)</text></svg>',
+  )
+
+/** Las fotos se borran por retención o al eliminar la cuenta (RNF05). */
+export const fotoVisible = (foto: string) => foto || FOTO_ELIMINADA

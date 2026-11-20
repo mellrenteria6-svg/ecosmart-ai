@@ -139,7 +139,10 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
       </main>
       <footer className="shell-footer">
         <span>EcoSmart AI · Prototipo Fase 1</span>
-        <a href="#/correo">Bandeja de correo simulada</a>
+        <span className="shell-footer-links">
+          <a href="#/privacidad">Aviso de privacidad</a>
+          <a href="#/correo">Bandeja de correo simulada</a>
+        </span>
       </footer>
     </div>
   )

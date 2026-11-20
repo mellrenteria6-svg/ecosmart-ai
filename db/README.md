@@ -17,6 +17,9 @@ powershell -ExecutionPolicy Bypass -File db\instalar.ps1
 | `migraciones/002_instituciones.sql` | Varias universidades con sus dominios de correo (RN01 ajustada) |
 | `migraciones/003_servidor.sql` | Sesiones con token y bandeja de correo simulada |
 | `migraciones/004_uees.sql` | Universidad Espíritu Santo (`uees.edu.ec`) |
+| `migraciones/005_privacidad.sql` | Eliminación de cuenta (anonimizada) y retención de fotos (RNF05) |
+
+Si la base ya existe y `server/.env` está configurado, también sirve `npm run db:migrar`.
 
 ## Conectar la página a PostgreSQL
 
@@ -48,3 +51,12 @@ SELECT * FROM v_material_por_categoria;  -- material recuperado
 ```
 
 Diagrama: en pgAdmin, clic derecho sobre la base `ecosmart` → **ERD For Database**.
+
+## Pruebas automáticas (RNF10)
+
+```bash
+npm test            # 49 pruebas: reglas de negocio, base de datos y API
+npm run verificar   # lint + tipos + pruebas + construcción (lo mismo que corre GitHub Actions)
+```
+
+Las pruebas de integración usan un PostgreSQL en memoria (PGlite): no tocan la base real.

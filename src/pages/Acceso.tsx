@@ -60,6 +60,7 @@ export function Ingresar() {
   const [correo, setCorreo] = useState('')
   const [password, setPassword] = useState('')
   const [segundoFactor, setSegundoFactor] = useState<string | null>(null)
+  const cuentaEliminada = useRuta().query.get('eliminada') === '1'
   const [codigo, setCodigo] = useState('')
   const { error, cargando, ejecutar } = useAccion()
 
@@ -94,6 +95,7 @@ export function Ingresar() {
 
   return (
     <MarcoAcceso titulo={<>Hola de <em>nuevo</em>.</>} subtitulo="Ingresa con tu correo institucional.">
+      {cuentaEliminada && <Alerta tono="ok" titulo="Tu cuenta fue eliminada">Borramos tus datos personales y tus fotos. Gracias por reciclar con EcoSmart AI.</Alerta>}
       <form onSubmit={enviar} className="form">
         {error && <Alerta tono="error">{error}</Alerta>}
         <Campo etiqueta="Correo institucional">
@@ -209,7 +211,7 @@ export function Registro() {
         <label className="check">
           <input type="checkbox" checked={f.consentimiento} onChange={(e) => setF({ ...f, consentimiento: e.target.checked })} />
           <span>
-            Acepto el aviso de privacidad: mis fotos solo las ven el recolector y el administrador autorizados y se conservan {db.config.diasRetencionFotos} días.
+            Acepto el <a href="#/privacidad" target="_blank" rel="noreferrer">aviso de privacidad</a>: mis fotos solo las ven el recolector y el administrador autorizados y se conservan {db.config.diasRetencionFotos} días.
           </span>
         </label>
         <button className="btn btn-tinta btn-bloque btn-lg" disabled={cargando}>Crear cuenta</button>

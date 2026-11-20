@@ -217,3 +217,15 @@ export async function bandejaSimulada() {
   const { rows } = await pool.query('SELECT id, para, asunto, cuerpo, enlace, creado_en FROM correo_simulado ORDER BY creado_en DESC LIMIT 50')
   return rows.map((r) => ({ id: r.id, para: r.para, asunto: r.asunto, cuerpo: r.cuerpo, enlace: r.enlace ?? undefined, creadoEn: new Date(r.creado_en).getTime() }))
 }
+
+/** Confirma la contraseña del titular antes de una acción sensible. */
+export async function comprobarPassword(usuarioId: string, password: unknown) {
+  const { rows } = await pool.query('SELECT password_hash = crypt($2, password_hash) AS ok FROM usuario WHERE id = $1', [usuarioId, String(password ?? '')])
+  if (!rows[0]?.ok) throw new ErrorHttp(403, 'La contraseña no es correcta.')
+}
+
+/** Tras eliminar una cuenta: la contraseña deja de servir y se cierran todas sus sesiones. */
+export async function invalidarCredenciales(usuarioId: string) {
+  await pool.query("UPDATE usuario SET password_hash = 'cuenta-eliminada' WHERE id = $1", [usuarioId])
+  await pool.query('DELETE FROM sesion WHERE usuario_id = $1', [usuarioId])
+}

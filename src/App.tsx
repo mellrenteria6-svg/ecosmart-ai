@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import './App.css'
-import { MODO_SERVIDOR, procesarVencimientos, refrescarDesdeServidor, sincronizarCola, useStore, usuarioActual } from './data/store'
+import { MODO_SERVIDOR, aplicarRetencionFotos, procesarVencimientos, refrescarDesdeServidor, sincronizarCola, useStore, usuarioActual } from './data/store'
 import type { Rol, Usuario } from './data/types'
 import { Shell } from './components/Shell'
 import { Vacio } from './components/ui'
 import { navegar, useRuta } from './lib/router'
 import { Portada } from './pages/Portada'
 import { BandejaCorreo, Ingresar, Recuperar, Registro, Restablecer, Verificar } from './pages/Acceso'
-import { Catalogo, Historial, InicioUsuario, MisCanjes, Notificaciones, Perfil, PuntosCampus } from './pages/Usuario'
+import { AvisoPrivacidad, Catalogo, Historial, InicioUsuario, MisCanjes, Notificaciones, Perfil, PuntosCampus } from './pages/Usuario'
 import { Reciclar } from './pages/Reciclar'
 import { LotesCerrados, PendientesPunto, PuntosRecolector, RevisionIndividual } from './pages/Recolector'
 import { Reportes } from './pages/Reportes'
@@ -87,6 +87,7 @@ export default function App() {
 
   useEffect(() => {
     procesarVencimientos()
+    aplicarRetencionFotos()
     void sincronizarCola()
     if (!MODO_SERVIDOR) return
     // Modo base de datos: trae los datos de PostgreSQL y los mantiene al día
@@ -120,6 +121,8 @@ export default function App() {
       return <Restablecer />
     case '/correo':
       return <BandejaCorreo />
+    case '/privacidad':
+      return <AvisoPrivacidad />
   }
 
   // Rutas protegidas: sesión válida (RF02) y rol autorizado (RNF04)

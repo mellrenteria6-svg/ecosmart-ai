@@ -10,10 +10,11 @@ import {
   registrosHoy,
   saldoConfirmado,
   useStore,
+  eliminarMiCuenta,
 } from '../data/store'
 import type { Recompensa, Usuario } from '../data/types'
-import { Alerta, Encabezado, EstadoBadge, Modal, Puntos, Vacio, useAccion } from '../components/ui'
-import { ChipCategoria, MapaCampus, Qr } from '../components/Visual'
+import { Alerta, Campo, Encabezado, EstadoBadge, Modal, Puntos, Vacio, useAccion } from '../components/ui'
+import { ChipCategoria, MapaCampus, Qr, fotoVisible } from '../components/Visual'
 import { ColaOffline } from './Reciclar'
 import { Insignias } from './Comunidad'
 import { ETIQUETA_CANJE, ETIQUETA_PUNTO, ETIQUETA_RECICLAJE, fmtFecha, fmtFechaHora, fmtNumero, fmtPct, hace, tiempoRestante } from '../lib/formato'
@@ -109,7 +110,7 @@ export function InicioUsuario({ usuario }: { usuario: Usuario }) {
               const punto = db.puntos.find((p) => p.id === r.puntoId)
               return (
                 <li key={r.id} className="fila-reciclaje">
-                  <img src={r.foto} alt="" className="miniatura" />
+                  <img src={fotoVisible(r.foto)} alt="" className="miniatura" />
                   <div className="fila-info">
                     <b>
                       {r.cantidadFinal ?? r.cantidadReportada} {r.unidad} · {cat.nombre}
@@ -237,7 +238,7 @@ export function Historial({ usuario }: { usuario: Usuario }) {
               return (
                 <li key={x.id}>
                   <button type="button" className="fila-reciclaje fila-boton" onClick={() => setDetalle(x.id)}>
-                    <img src={x.foto} alt="" className="miniatura" />
+                    <img src={fotoVisible(x.foto)} alt="" className="miniatura" />
                     <div className="fila-info">
                       <b>
                         {x.cantidadFinal ?? x.cantidadReportada} {x.unidad} · {cat.nombre}
@@ -295,7 +296,7 @@ export function Historial({ usuario }: { usuario: Usuario }) {
       <Modal abierto={!!r} titulo="Detalle del reciclaje" onCerrar={() => setDetalle(null)}>
         {r && (
           <div className="detalle-reciclaje">
-            <img src={r.foto} alt="Foto del residuo registrado" className="detalle-foto" />
+            <img src={fotoVisible(r.foto)} alt="Foto del residuo registrado" className="detalle-foto" />
             <dl className="dl">
               <dt>Estado</dt>
               <dd>
@@ -588,7 +589,118 @@ export function Perfil({ usuario }: { usuario: Usuario }) {
           Tus fotografías se guardan en almacenamiento privado y solo las ven el recolector asignado y el administrador. Se eliminan a los {db.config.diasRetencionFotos} días.
           Si eliminas tu cuenta, tus datos se anonimizan según la política aprobada.
         </p>
-        <a href="#/recuperar">Cambiar contraseña</a>
+        <div className="enlaces-fila">
+          <a href="#/privacidad">Leer el aviso de privacidad</a>
+          <a href="#/recuperar">Cambiar contraseña</a>
+        </div>
+      </section>
+      {esUsuario && <EliminarCuenta usuario={usuario} />}
+    </div>
+  )
+}
+
+// RNF05 – El titular elimina su cuenta: se anonimiza y se conserva el historial sin identificarlo
+function EliminarCuenta({ usuario }: { usuario: Usuario }) {
+  const { db } = useStore()
+  const [abierto, setAbierto] = useState(false)
+  const [password, setPassword] = useState('')
+  const [entiendo, setEntiendo] = useState(false)
+  const { error, setError, cargando, ejecutar } = useAccion()
+  const saldo = saldoConfirmado(db, usuario.id)
+  const canjesPendientes = db.canjes.filter((c) => c.usuarioId === usuario.id && c.estado === 'pendiente').length
+  const porValidar = db.reciclajes.filter((r) => r.usuarioId === usuario.id && (r.estado === 'pendiente' || r.estado === 'en_revision')).length
+
+  return (
+    <section className="bloque zona-peligro">
+      <h2 className="h-bloque">Eliminar mi cuenta</h2>
+      <p className="nota">Borra tus datos personales y tus fotos. No se puede deshacer.</p>
+      <button type="button" className="btn btn-peligro" onClick={() => { setError(null); setPassword(''); setEntiendo(false); setAbierto(true) }}>
+        Eliminar mi cuenta
+      </button>
+      <Modal abierto={abierto} titulo="Eliminar mi cuenta" onCerrar={() => setAbierto(false)}>
+        <form
+          className="form"
+          onSubmit={async (e) => {
+            e.preventDefault()
+            const ok = await ejecutar(async () => {
+              await eliminarMiCuenta(password)
+              return true
+            })
+            if (ok) navegar('/ingresar?eliminada=1')
+          }}
+        >
+          <p>Al eliminar tu cuenta:</p>
+          <ul className="lista-efectos">
+            <li>Se borran tu nombre, tu correo, tu facultad y <b>todas tus fotos</b>.</li>
+            <li>Pierdes tus <b>{fmtNumero(saldo)} EcoPoints</b> y ya no podrás iniciar sesión.</li>
+            {porValidar > 0 && <li>Tus {porValidar} reciclajes sin validar se cierran sin sumar puntos.</li>}
+            {canjesPendientes > 0 && <li>Tus {canjesPendientes} canjes pendientes se cancelan.</li>}
+            <li>El historial de reciclajes y canjes se conserva <b>sin identificarte</b>, porque la auditoría no se puede borrar.</li>
+          </ul>
+          <Campo etiqueta="Confirma con tu contraseña">
+            {(id) => <input id={id} className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
+          </Campo>
+          <label className="check">
+            <input type="checkbox" checked={entiendo} onChange={(e) => setEntiendo(e.target.checked)} />
+            <span>Entiendo que esta acción no se puede deshacer.</span>
+          </label>
+          {error && <Alerta tono="error">{error}</Alerta>}
+          <button className="btn btn-peligro btn-bloque" disabled={cargando || !entiendo || !password}>
+            Eliminar definitivamente
+          </button>
+        </form>
+      </Modal>
+    </section>
+  )
+}
+
+// RNF05 – Aviso de privacidad
+export function AvisoPrivacidad() {
+  const { db } = useStore()
+  const dias = db.config.diasRetencionFotos
+  return (
+    <div className="pagina pagina-estrecha aviso-privacidad">
+      <Encabezado volver="#/" titulo="Aviso de privacidad" descripcion="Qué datos usa EcoSmart AI, para qué y por cuánto tiempo." />
+      <section className="bloque">
+        <h2 className="h-bloque">Qué datos recogemos</h2>
+        <ul>
+          <li><b>Cuenta:</b> nombre, correo institucional, universidad y facultad.</li>
+          <li><b>Reciclajes:</b> punto, fecha, categoría, cantidad y una foto del residuo tomada en el momento.</li>
+          <li><b>EcoPoints y canjes:</b> movimientos de puntos y recompensas canjeadas.</li>
+        </ul>
+        <p className="nota">No pedimos ubicación, contactos ni acceso a tu galería. La cámara se usa solo mientras tomas la foto.</p>
+      </section>
+      <section className="bloque">
+        <h2 className="h-bloque">Para qué los usamos</h2>
+        <ul>
+          <li>Validar que el reciclaje es real y acreditar tus EcoPoints.</li>
+          <li>Entregar recompensas y prevenir fraudes (fotos repetidas o registros sospechosos).</li>
+          <li>Generar indicadores agregados para la gestión ambiental del campus.</li>
+        </ul>
+      </section>
+      <section className="bloque">
+        <h2 className="h-bloque">Quién los ve</h2>
+        <ul>
+          <li><b>Tus fotos:</b> tú, el recolector asignado al punto y la administración.</li>
+          <li><b>El EcoRanking:</b> tu nombre, facultad y puntos, salvo que elijas aparecer como anónimo.</li>
+          <li>Las contraseñas se guardan cifradas y nadie, ni la administración, puede verlas.</li>
+        </ul>
+      </section>
+      <section className="bloque">
+        <h2 className="h-bloque">Cuánto tiempo los guardamos</h2>
+        <ul>
+          <li><b>Fotos:</b> se borran automáticamente a los <b>{dias} días</b> de que el reciclaje se valida o rechaza.</li>
+          <li><b>Historial de puntos y auditoría:</b> se conservan porque no pueden modificarse ni borrarse.</li>
+        </ul>
+      </section>
+      <section className="bloque">
+        <h2 className="h-bloque">Tus derechos</h2>
+        <ul>
+          <li>Consultar tus datos e historial en tu perfil.</li>
+          <li>Ocultar tu identidad en el EcoRanking.</li>
+          <li><b>Eliminar tu cuenta</b> desde tu perfil: se borran tus datos personales y fotos, y el historial queda anonimizado.</li>
+        </ul>
+        <p className="nota">Para cualquier consulta escribe a la oficina de Gestión Ambiental de tu universidad.</p>
       </section>
     </div>
   )

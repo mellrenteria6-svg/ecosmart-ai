@@ -14,5 +14,5 @@
     "erasableSyntaxOnly": false,
     "jsx": "react-jsx"
   },
-  "include": ["server", "src/data", "src/vite-env.d.ts"]
+  "include": ["server", "db", "src/data", "src/vite-env.d.ts"]
 }

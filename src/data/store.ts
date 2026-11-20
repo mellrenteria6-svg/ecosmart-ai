@@ -992,6 +992,79 @@ function esSorteo(d: Db, c: Canje) {
   return d.recompensas.find((r) => r.id === c.recompensaId)?.tipo === 'sorteo'
 }
 
+// ---------------------------------------------------------------------------
+// Privacidad (RNF05): retención de fotos y eliminación de cuenta
+// ---------------------------------------------------------------------------
+
+const DIA_MS = 24 * HORA
+
+/**
+ * Borra las fotos de los reciclajes ya decididos (validados o rechazados) con más días que la
+ * retención configurada. La huella perceptual se conserva: no es un dato personal y sigue
+ * sirviendo para detectar fotos repetidas dentro del periodo.
+ */
+export function aplicarRetencionFotos() {
+  if (MODO_SERVIDOR) return // el servidor aplica la retención en cada consulta
+  const limite = Date.now() - snapshot.db.config.diasRetencionFotos * DIA_MS
+  const vencida = (r: Reciclaje) => r.foto !== '' && r.creadoEn < limite && (r.estado === 'validado' || r.estado === 'rechazado')
+  if (!snapshot.db.reciclajes.some(vencida)) return
+  transaccion((d) => {
+    const afectados = d.reciclajes.filter(vencida)
+    afectados.forEach((r) => (r.foto = ''))
+    auditar(d, 'sistema', 'Retención de fotos', 'RECICLAJE', '*', `${afectados.length} fotos eliminadas por superar ${d.config.diasRetencionFotos} días`)
+  })
+}
+
+/** Anonimiza la cuenta del titular. El historial de puntos y la auditoría se conservan sin datos personales. */
+function eliminarCuenta__local(usuarioId: string) {
+  return transaccion((d) => {
+    const u = actor(d, usuarioId)
+    if (u.eliminadoEn) throw new ApiError('Esta cuenta ya fue eliminada.')
+    if (u.rol !== 'usuario') throw new ApiError('Las cuentas de recolector, aliado o administrador las da de baja la administración.')
+    // Registros que aún no se deciden: se cierran sin acreditar puntos
+    d.reciclajes
+      .filter((r) => r.usuarioId === u.id && (r.estado === 'pendiente' || r.estado === 'en_revision'))
+      .forEach((r) => {
+        r.estado = 'rechazado'
+        r.motivoRechazo = 'Cuenta eliminada por su titular'
+        r.validadoEn = Date.now()
+      })
+    // Sus fotos se borran; los canjes pendientes se cancelan y devuelven el stock
+    d.reciclajes.filter((r) => r.usuarioId === u.id).forEach((r) => (r.foto = ''))
+    d.canjes.filter((c) => c.usuarioId === u.id && c.estado === 'pendiente').forEach((c) => devolverCanje(d, c, 'cancelado', u.id))
+    d.tokens.filter((t) => t.usuarioId === u.id).forEach((t) => (t.usado = true))
+    const corto = u.id.replace(/-/g, '').slice(0, 10)
+    u.nombre = 'Cuenta eliminada'
+    u.correo = `eliminada-${corto}@anonimo.invalid`
+    u.facultad = ''
+    u.passwordHash = ''
+    u.verificado = false
+    u.bloqueado = true
+    u.rankingAnonimo = true
+    u.consentimientoPrivacidad = false
+    u.sesionVersion += 1
+    u.eliminadoEn = Date.now()
+    auditar(d, u.id, 'Eliminar cuenta (anonimizada)', 'USUARIO', u.id, 'Datos personales y fotos eliminados; historial conservado sin identificar')
+    return { eliminada: true }
+  })
+}
+export const eliminarCuentaLocal = eliminarCuenta__local
+
+/** El titular elimina su cuenta confirmando su contraseña. */
+export async function eliminarMiCuenta(password: string) {
+  const s = snapshot.sesion
+  if (!s) throw new ApiError('Inicia sesión para continuar.')
+  if (MODO_SERVIDOR) {
+    await llamarApi('/cuenta/eliminar', { password })
+  } else {
+    const u = snapshot.db.usuarios.find((x) => x.id === s.usuarioId)
+    if (!u || (await hashPassword(u.correo, password)) !== u.passwordHash) throw new ApiError('La contraseña no es correcta.')
+    eliminarCuenta__local(u.id)
+  }
+  emitir({ sesion: null })
+  if (MODO_SERVIDOR) await refrescarDesdeServidor()
+}
+
 export function procesarVencimientos() {
   if (MODO_SERVIDOR) return // el servidor vence los canjes en cada consulta
   const ahora = Date.now()
@@ -1094,6 +1167,7 @@ function cambiarRol__local(adminId: string, usuarioId: string, rol: Rol) {
     requiereRol(d, adminId, 'admin')
     if (adminId === usuarioId) throw new ApiError('No puedes cambiar tu propio rol.')
     const u = actor(d, usuarioId)
+    if (u.eliminadoEn) throw new ApiError('Esta cuenta fue eliminada por su titular y ya no se puede modificar.')
     const antes = u.rol
     u.rol = rol
     u.sesionVersion += 1 // un cambio de rol revoca sesiones (RNF13)
@@ -1112,6 +1186,7 @@ function cambiarBloqueo__local(adminId: string, usuarioId: string, bloquear: boo
     if (adminId === usuarioId) throw new ApiError('No puedes bloquear tu propia cuenta.')
     if (!motivo.trim()) throw new ApiError('Indica el motivo.')
     const u = actor(d, usuarioId)
+    if (u.eliminadoEn) throw new ApiError('Esta cuenta fue eliminada por su titular y ya no se puede modificar.')
     u.bloqueado = bloquear
     u.sesionVersion += 1
     if (bloquear) {
@@ -1130,6 +1205,7 @@ function crearAjuste__local(adminId: string, usuarioId: string, puntos: number, 
     if (!Number.isInteger(puntos) || puntos === 0) throw new ApiError('El ajuste debe ser un número entero distinto de cero.')
     if (!motivo.trim()) throw new ApiError('El ajuste exige un motivo.')
     const u = actor(d, usuarioId)
+    if (u.eliminadoEn) throw new ApiError('Esta cuenta fue eliminada por su titular y ya no se puede modificar.')
     if (saldoConfirmado(d, u.id) + puntos < 0) throw new ApiError('El ajuste dejaría el saldo en negativo.')
     registrarMovimiento(d, { usuarioId: u.id, tipo: 'ajuste', puntos, referenciaId: 'ajuste-admin', descripcion: `Ajuste: ${motivo.trim()}` })
     notificar(d, u.id, 'Ajuste de EcoPoints', `${puntos > 0 ? '+' : ''}${puntos} EcoPoints. Motivo: ${motivo.trim()}`)

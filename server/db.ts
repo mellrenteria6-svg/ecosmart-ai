@@ -25,7 +25,7 @@ pg.types.setTypeParser(20, (v) => parseInt(v, 10)) // BIGINT
 pg.types.setTypeParser(1082, (v) => v) // DATE como 'YYYY-MM-DD'
 
 // Usa PGHOST, PGPORT, PGDATABASE, PGUSER y PGPASSWORD del archivo server/.env
-export const pool = new pg.Pool({ max: 10 })
+export const pool = new pg.Pool({ max: Number(process.env.PG_POOL_MAX ?? 10) })
 
 type Fila = Record<string, unknown>
 const ms = (v: unknown) => (v instanceof Date ? v.getTime() : v == null ? undefined : new Date(v as string).getTime())
@@ -82,6 +82,7 @@ export async function cargarDb(c: PoolClient): Promise<Db> {
       creadoEn: ms(r.creado_en)!,
       consentimientoPrivacidad: r.consentimiento_privacidad as boolean,
       rankingAnonimo: r.ranking_anonimo as boolean,
+      eliminadoEn: ms(r.eliminado_en),
     })),
     puntos: puntos.map((r): PuntoReciclaje => ({
       id: r.id as string,
@@ -207,6 +208,7 @@ const filaUsuario: Mapeo<Usuario> = (u) => ({
   sesion_version: u.sesionVersion,
   ranking_anonimo: !!u.rankingAnonimo,
   consentimiento_privacidad: u.consentimientoPrivacidad,
+  eliminado_en: fecha(u.eliminadoEn),
 })
 const filaCategoria: Mapeo<CategoriaResiduo> = (c) => ({
   id: c.id,

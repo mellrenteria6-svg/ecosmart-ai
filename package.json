@@ -12,7 +12,11 @@
     "build:bd": "tsc -b && vite build --mode servidor",
     "servidor": "tsx --env-file=server/.env server/index.ts",
     "servidor:dev": "tsx watch --env-file=server/.env server/index.ts",
-    "typecheck:servidor": "tsc -p tsconfig.server.json"
+    "typecheck:servidor": "tsc -p tsconfig.server.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verificar": "npm run lint && npm run typecheck:servidor && npm test && npm run build",
+    "db:migrar": "tsx --env-file=server/.env server/migrar.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
@@ -25,6 +29,8 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@electric-sql/pglite-socket": "^0.2.18",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
@@ -34,6 +40,7 @@
     "oxlint": "^1.90.0",
     "tsx": "^4.23.15",
     "typescript": "~7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   }
 }
