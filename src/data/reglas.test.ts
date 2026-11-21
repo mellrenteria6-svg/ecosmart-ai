@@ -20,6 +20,7 @@ import {
   procesarVencimientos,
   puntoPorCodigo,
   registrarReciclaje,
+  registrosHoy,
   saldoConfirmado,
   cambiarBloqueo,
 } from './store'
@@ -86,7 +87,8 @@ describe('Registro de reciclaje (RF07–RF11)', () => {
   })
 
   it('CP-RF11: aplica el tope diario configurable', async () => {
-    db().config.topeDiario = 3 // la semilla ya tiene 2 registros de hoy
+    // Cuántos registros de hoy trae la semilla depende de la hora y la zona horaria: se cuentan
+    db().config.topeDiario = registrosHoy(db(), ESTUDIANTE) + 1
     await registrarReciclaje(datos())
     await expect(registrarReciclaje(datos())).rejects.toThrow(/tope diario/)
   })

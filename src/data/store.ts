@@ -1098,6 +1098,7 @@ function crearCanje__local(usuarioId: string, recompensaId: string, idempotencyK
     do {
       codigo = `ECO-${codigoAleatorio(4)}-${codigoAleatorio(4)}`
     } while (d.canjes.some((c) => c.codigo === codigo))
+    const ahora = Date.now() // una sola lectura del reloj: vence exactamente N horas después
     const canje: Canje = {
       id: nuevoId('c'),
       idempotencyKey,
@@ -1106,8 +1107,8 @@ function crearCanje__local(usuarioId: string, recompensaId: string, idempotencyK
       codigo,
       costo: rw.costo,
       estado: 'pendiente',
-      creadoEn: Date.now(),
-      venceEn: rw.tipo === 'sorteo' ? new Date(rw.vigenciaHasta + 'T23:59:59').getTime() : Date.now() + d.config.horasVencimientoCanje * HORA,
+      creadoEn: ahora,
+      venceEn: rw.tipo === 'sorteo' ? new Date(rw.vigenciaHasta + 'T23:59:59').getTime() : ahora + d.config.horasVencimientoCanje * HORA,
       devuelto: false,
     }
     if (rw.tipo === 'sorteo' && rw.sorteoRealizado) throw new ApiError('Este sorteo ya se realizó.')
