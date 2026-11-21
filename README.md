@@ -1,32 +1,72 @@
-# React + TypeScript + Vite
+# EcoSmart AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Plataforma web de reciclaje inteligente para campus universitarios. El estudiante escanea el QR de un punto de reciclaje, fotografía el residuo, una IA lo clasifica y, cuando el recolector valida el lote, recibe **EcoPoints** que puede canjear por recompensas.
 
-Currently, two official plugins are available:
+Proyecto de **Diseño de Sistemas / Ingeniería de Software II** (noviembre de 2026), basado en la *Especificación de requisitos y matriz de trazabilidad v1.0*.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Equipo:** Pablo Andrés Perea Bohorquez · Mell Eunice Rentería Alcivar · César Emilio Regalado Sandoval
 
-## React Compiler
+## Qué incluye (Fase 1)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Rol | Funciones |
+|---|---|
+| Usuario | Registro con correo universitario, reciclaje con QR + foto + IA, saldo e historial, recompensas y canjes, EcoRanking, impacto ambiental, insignias, eliminar cuenta |
+| Recolector | Puntos asignados, validación por lotes, revisión individual, corrección de cantidades con motivo |
+| Administrador | Dashboard, puntos y QR imprimibles, asignaciones, categorías versionadas, recompensas, entrega de canjes, usuarios, universidades, 8 reportes (CSV/PDF), alertas antifraude, auditoría |
 
-## Expanding the Oxlint configuration
+- **IA:** CLIP ViT-B/32 cuantizado que corre en el navegador (Web Worker), con clasificación *zero-shot* en 6 categorías.
+- **Varias universidades:** DEMO, ESPOL, ECOTEC, UCSG y UEES, cada una con sus dominios de correo.
+- **Sin conexión:** los reciclajes se guardan en una cola local y se sincronizan al volver la red.
+- **Privacidad:** fotos visibles solo para el recolector y la administración, borradas a los 90 días; eliminación de cuenta con anonimización.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Tecnologías
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+React 19 · TypeScript · Vite · Node.js + Express · PostgreSQL 18 · Transformers.js (CLIP) · Vitest
+
+## Ejecutar
+
+Requisitos: Node.js 24 y, para el modo con base de datos, PostgreSQL 18.
+
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+**Modo demostración** (los datos viven en el navegador, sin servidor):
+
+```bash
+npm run dev
+```
+
+**Modo base de datos** (PostgreSQL):
+
+```bash
+powershell -ExecutionPolicy Bypass -File db\instalar.ps1      # crea la base "ecosmart"
+powershell -ExecutionPolicy Bypass -File server\configurar.ps1 # guarda la clave en server/.env
+npm run servidor:dev                                           # API en http://localhost:3001/api
+npm run dev:bd                                                 # página en http://localhost:5173
+```
+
+En Windows, si PowerShell bloquea `npm`, usa `npm.cmd`.
+
+Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec` y `admin@universidad.edu.ec`. El administrador usa segundo factor: el código aparece en la *Bandeja de correo simulada* (`/#/correo`).
+
+## Pruebas
+
+```bash
+npm test            # 49 pruebas: reglas de negocio, base de datos y API
+npm run verificar   # lint + tipos + pruebas + construcción
+```
+
+Las pruebas de integración usan PostgreSQL en memoria (PGlite) y no tocan la base real. GitHub Actions ejecuta la verificación completa en cada cambio.
+
+## Estructura
+
+```
+src/data/       Modelo, reglas de negocio (store.ts), reportes y pruebas unitarias
+src/pages/      Pantallas por rol
+src/lib/        IA (CLIP), imágenes, enrutador y formato
+server/         API Express sobre PostgreSQL, autenticación y pruebas de integración
+db/             Esquema, datos iniciales, migraciones e instalador
+```
+
+Más detalles de la base de datos en [db/README.md](db/README.md).
