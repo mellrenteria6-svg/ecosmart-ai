@@ -12,6 +12,7 @@ Proyecto de **Diseño de Sistemas / Ingeniería de Software II** (noviembre de 2
 |---|---|
 | Usuario | Registro con correo universitario, reciclaje con QR + foto + IA, saldo e historial, recompensas y canjes, EcoRanking, impacto ambiental, insignias, eliminar cuenta |
 | Recolector | Puntos asignados, validación por lotes, revisión individual, corrección de cantidades con motivo |
+| Aliado | Resumen de sus canjes, publicar sus recompensas, validar y entregar solo sus códigos |
 | Administrador | Dashboard, puntos y QR imprimibles, asignaciones, categorías versionadas, recompensas, entrega de canjes, usuarios, universidades, 8 reportes (CSV/PDF), alertas antifraude, auditoría |
 
 - **IA:** CLIP ViT-B/32 cuantizado que corre en el navegador (Web Worker), con clasificación *zero-shot* en 6 categorías.
@@ -48,12 +49,12 @@ npm run dev:bd                                                 # página en http
 
 En Windows, si PowerShell bloquea `npm`, usa `npm.cmd`.
 
-Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec` y `admin@universidad.edu.ec`. El administrador usa segundo factor: el código aparece en la *Bandeja de correo simulada* (`/#/correo`).
+Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec`, `admin@universidad.edu.ec` y `aliado@universidad.edu.ec`. El administrador y el aliado usan segundo factor: el código aparece en la *Bandeja de correo simulada* (`/#/correo`).
 
 ## Pruebas
 
 ```bash
-npm test            # 49 pruebas: reglas de negocio, base de datos y API
+npm test            # 54 pruebas: reglas de negocio, base de datos y API
 npm run verificar   # lint + tipos + pruebas + construcción
 ```
 

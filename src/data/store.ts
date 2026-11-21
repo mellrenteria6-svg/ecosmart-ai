@@ -950,6 +950,11 @@ function guardarRecompensa__local(adminId: string, datosIn: Omit<Recompensa, 'id
       datos.procedencia = `Aliado: ${quien.nombre}`
       datos.tipo = 'beneficio'
     }
+    if (quien.rol === 'admin' && datos.aliadoId) {
+      const aliado = d.usuarios.find((u) => u.id === datos.aliadoId)
+      if (!aliado || aliado.rol !== 'aliado' || aliado.bloqueado) throw new ApiError('El responsable de entrega debe ser una cuenta de aliado activa.')
+      datos.responsable = aliado.nombre
+    }
     if (!datos.procedencia?.trim()) throw new ApiError('Indica la procedencia de la recompensa.')
     if (!datos.nombre.trim()) throw new ApiError('La recompensa necesita un nombre.')
     if (datos.activa) {

@@ -69,13 +69,13 @@ export function Ingresar() {
     const r = await ejecutar(() => iniciarSesion(correo, password))
     if (!r) return
     if (r.tipo === 'segundo_factor') setSegundoFactor(r.usuarioId)
-    else navegar(r.usuario.rol === 'recolector' ? '/rec' : '/app')
+    else navegar(r.usuario.rol === 'recolector' ? '/rec' : r.usuario.rol === 'aliado' ? '/aliado' : r.usuario.rol === 'admin' ? '/admin' : '/app')
   }
 
   async function enviarCodigo(e: FormEvent) {
     e.preventDefault()
     const u = await ejecutar(() => verificarSegundoFactor(segundoFactor!, codigo))
-    if (u) navegar('/admin')
+    if (u) navegar(u.rol === 'aliado' ? '/aliado' : '/admin')
   }
 
   if (segundoFactor) {

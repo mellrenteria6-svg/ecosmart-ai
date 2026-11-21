@@ -12,9 +12,9 @@ import { Reciclar } from './pages/Reciclar'
 import { LotesCerrados, PendientesPunto, PuntosRecolector, RevisionIndividual } from './pages/Recolector'
 import { Reportes } from './pages/Reportes'
 import { EcoRanking, Impacto } from './pages/Comunidad'
-import { AdminAlertas, AdminInstituciones, AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
+import { ResumenAliado, AdminAlertas, AdminInstituciones, AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
 
-const INICIO_ROL: Record<Rol, string> = { usuario: '/app', recolector: '/rec', admin: '/admin', aliado: '/' }
+const INICIO_ROL: Record<Rol, string> = { usuario: '/app', recolector: '/rec', admin: '/admin', aliado: '/aliado' }
 
 function Redirigir({ a }: { a: string }) {
   useEffect(() => navegar(a), [a])
@@ -132,7 +132,8 @@ export default function App() {
   const permitido =
     (area === 'app' && u.rol === 'usuario') ||
     (area === 'rec' && (u.rol === 'recolector' || (u.rol === 'admin' && partes[1] !== undefined && partes[1] !== 'lotes'))) ||
-    (area === 'admin' && u.rol === 'admin')
+    (area === 'admin' && u.rol === 'admin') ||
+    (area === 'aliado' && u.rol === 'aliado')
   if (!permitido) return <Redirigir a={INICIO_ROL[u.rol]} />
 
   return (
@@ -140,6 +141,7 @@ export default function App() {
       {area === 'app' && <PaginaUsuario u={u} partes={partes} query={query} />}
       {area === 'rec' && <PaginaRecolector u={u} partes={partes} />}
       {area === 'admin' && <PaginaAdmin u={u} partes={partes} />}
+      {area === 'aliado' && (partes[1] === 'entregas' ? <Entregas usuario={u} /> : partes[1] === 'recompensas' ? <AdminRecompensas usuario={u} /> : <ResumenAliado usuario={u} />)}
     </Shell>
   )
 }

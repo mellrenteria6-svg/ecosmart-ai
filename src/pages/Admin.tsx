@@ -565,11 +565,21 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
   const { db } = useStore()
   const [ed, setEd] = useState<(Omit<Recompensa, 'id'> & { id?: string }) | null>(null)
   const { error, setError, ejecutar } = useAccion()
-  const vacia: Omit<Recompensa, 'id'> = { nombre: '', descripcion: '', costo: 100, stock: 10, vigenciaDesde: hoyIso(), vigenciaHasta: hoyIso(), responsable: 'Administración', activa: true, emoji: '🎁', procedencia: 'Gestión Ambiental del campus', tipo: 'beneficio' }
+  const esAliado = usuario.rol === 'aliado'
+  const aliados = db.usuarios.filter((u) => u.rol === 'aliado' && !u.bloqueado)
+  const lista = esAliado ? db.recompensas.filter((r) => r.aliadoId === usuario.id) : db.recompensas
+  const vacia: Omit<Recompensa, 'id'> = esAliado
+    ? { nombre: '', descripcion: '', costo: 60, stock: 10, vigenciaDesde: hoyIso(), vigenciaHasta: hoyIso(), responsable: usuario.nombre, activa: true, emoji: '🎁', procedencia: `Aliado: ${usuario.nombre}`, tipo: 'beneficio', aliadoId: usuario.id }
+    : { nombre: '', descripcion: '', costo: 100, stock: 10, vigenciaDesde: hoyIso(), vigenciaHasta: hoyIso(), responsable: 'Administración', activa: true, emoji: '🎁', procedencia: 'Gestión Ambiental del campus', tipo: 'beneficio' }
 
   return (
     <div className="pagina">
-      <Encabezado titulo="Recompensas" descripcion="Una recompensa solo se activa con costo positivo, stock válido y vigencia coherente." acciones={<button type="button" className="btn btn-tinta" onClick={() => { setError(null); setEd(vacia) }}>+ Nueva recompensa</button>} />
+      <Encabezado
+        titulo={esAliado ? 'Mis recompensas' : 'Recompensas'}
+        descripcion={esAliado ? 'Publica los beneficios que entregas en tu local. Una recompensa solo se activa con costo positivo, stock válido y vigencia coherente.' : 'Una recompensa solo se activa con costo positivo, stock válido y vigencia coherente.'}
+        acciones={<button type="button" className="btn btn-tinta" onClick={() => { setError(null); setEd(vacia) }}>+ Nueva recompensa</button>}
+      />
+      {esAliado && lista.length === 0 && <Vacio titulo="Aún no publicas recompensas">Crea la primera: aparecerá en el catálogo de los estudiantes.</Vacio>}
       <div className="tabla-envoltura">
         <table className="tabla">
           <thead>
@@ -583,19 +593,23 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
             </tr>
           </thead>
           <tbody>
-            {db.recompensas.map((r) => (
+            {lista.map((r) => (
               <tr key={r.id}>
                 <td>
                   <span aria-hidden="true">{r.emoji}</span> {r.nombre}
                   <br />
-                  <small className="txt-muted">{r.procedencia}{r.tipo !== 'beneficio' ? ` · ${r.tipo === 'sorteo' ? 'Sorteo' : 'Donación'}` : ''}</small>
+                  <small className="txt-muted">
+                    {r.procedencia}
+                    {r.tipo !== 'beneficio' ? ` · ${r.tipo === 'sorteo' ? 'Sorteo' : 'Donación'}` : ''}
+                    {!esAliado && ` · Entrega: ${r.responsable}`}
+                  </small>
                 </td>
                 <td className="num">{r.costo}</td>
                 <td className="num">{r.stock === 0 ? <Badge tono="warn">Agotado</Badge> : r.stock}</td>
                 <td>{fmtFecha(r.vigenciaDesde)} – {fmtFecha(r.vigenciaHasta)}</td>
                 <td>{r.activa ? <Badge tono="ok">Activa</Badge> : <Badge>Inactiva</Badge>}</td>
                 <td className="num">
-                  {r.tipo === 'sorteo' && !r.sorteoRealizado && (
+                  {!esAliado && r.tipo === 'sorteo' && !r.sorteoRealizado && (
                     <button
                       type="button"
                       className="btn btn-acento btn-sm"
@@ -631,7 +645,7 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
               <Campo etiqueta="Nombre">{(id) => <input id={id} className="input" value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} required />}</Campo>
             </div>
             <Campo etiqueta="Descripción">{(id) => <textarea id={id} className="input" rows={2} value={ed.descripcion} onChange={(e) => setEd({ ...ed, descripcion: e.target.value })} />}</Campo>
-            <div className="form-2">
+            {!esAliado && <div className="form-2">
               <Campo etiqueta="Tipo">
                 {(id) => (
                   <select id={id} className="input" value={ed.tipo} onChange={(e) => setEd({ ...ed, tipo: e.target.value as Recompensa['tipo'] })}>
@@ -642,7 +656,7 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
                 )}
               </Campo>
               <Campo etiqueta="Procedencia">{(id) => <input id={id} className="input" value={ed.procedencia} onChange={(e) => setEd({ ...ed, procedencia: e.target.value })} />}</Campo>
-            </div>
+            </div>}
             <div className="form-2">
               <Campo etiqueta="Costo (EcoPoints)">{(id) => <input id={id} className="input" type="number" value={ed.costo} onChange={(e) => setEd({ ...ed, costo: Number(e.target.value) })} />}</Campo>
               <Campo etiqueta="Stock">{(id) => <input id={id} className="input" type="number" value={ed.stock} onChange={(e) => setEd({ ...ed, stock: Number(e.target.value) })} />}</Campo>
@@ -651,9 +665,27 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
               <Campo etiqueta="Vigente desde">{(id) => <input id={id} className="input" type="date" value={ed.vigenciaDesde} onChange={(e) => setEd({ ...ed, vigenciaDesde: e.target.value })} />}</Campo>
               <Campo etiqueta="Vigente hasta">{(id) => <input id={id} className="input" type="date" value={ed.vigenciaHasta} onChange={(e) => setEd({ ...ed, vigenciaHasta: e.target.value })} />}</Campo>
             </div>
-            <Campo etiqueta="Responsable de entrega" ayuda="En la Fase 1 entrega la administración; los aliados se habilitan en la Fase 2.">
-              {(id, d) => <input id={id} aria-describedby={d} className="input" value={ed.responsable} onChange={(e) => setEd({ ...ed, responsable: e.target.value })} />}
-            </Campo>
+            {!esAliado && (
+              <Campo etiqueta="Quién entrega el premio" ayuda="Si lo entrega un aliado, solo esa cuenta podrá validar sus códigos.">
+                {(id, d) => (
+                  <select
+                    id={id}
+                    aria-describedby={d}
+                    className="input"
+                    value={ed.aliadoId ?? ''}
+                    onChange={(e) => {
+                      const a = aliados.find((x) => x.id === e.target.value)
+                      setEd({ ...ed, aliadoId: a?.id, responsable: a ? a.nombre : 'Administración', procedencia: a ? `Aliado: ${a.nombre}` : ed.procedencia.startsWith('Aliado:') ? 'Gestión Ambiental del campus' : ed.procedencia })
+                    }}
+                  >
+                    <option value="">Administración</option>
+                    {aliados.map((a) => (
+                      <option key={a.id} value={a.id}>{a.nombre} (aliado)</option>
+                    ))}
+                  </select>
+                )}
+              </Campo>
+            )}
             <label className="check">
               <input type="checkbox" checked={ed.activa} onChange={(e) => setEd({ ...ed, activa: e.target.checked })} />
               <span>Activa en el catálogo</span>
@@ -667,9 +699,11 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
   )
 }
 
-// A01 / A02 – Validar código y entregar (administrador en Fase 1)
+// A01 / A02 – Validar código y entregar (administrador; aliado en Fase 2, solo sus recompensas)
 export function Entregas({ usuario }: { usuario: Usuario }) {
   const { db } = useStore()
+  const esAliado = usuario.rol === 'aliado'
+  const mias = new Set(db.recompensas.filter((r) => !esAliado || r.aliadoId === usuario.id).map((r) => r.id))
   const [codigo, setCodigo] = useState('')
   const [canje, setCanje] = useState<Canje | null>(null)
   const [ok, setOk] = useState<string | null>(null)
@@ -677,7 +711,7 @@ export function Entregas({ usuario }: { usuario: Usuario }) {
   const actual = canje ? db.canjes.find((c) => c.id === canje.id) ?? canje : null
   const rw = actual && db.recompensas.find((r) => r.id === actual.recompensaId)
   const dueno = actual && db.usuarios.find((u) => u.id === actual.usuarioId)
-  const recientes = db.canjes.filter((c) => c.estado === 'entregado').sort((a, b) => (b.entregadoEn ?? 0) - (a.entregadoEn ?? 0)).slice(0, 6)
+  const recientes = db.canjes.filter((c) => c.estado === 'entregado' && mias.has(c.recompensaId)).sort((a, b) => (b.entregadoEn ?? 0) - (a.entregadoEn ?? 0)).slice(0, 6)
 
   return (
     <div className="pagina pagina-media">
@@ -687,7 +721,11 @@ export function Entregas({ usuario }: { usuario: Usuario }) {
         onSubmit={async (e) => {
           e.preventDefault()
           setOk(null)
-          const c = await ejecutar(() => buscarCanje(codigo))
+          const c = await ejecutar(() => {
+            const encontrado = buscarCanje(codigo)
+            if (!mias.has(encontrado.recompensaId)) throw new Error('Este código corresponde a una recompensa que entrega otro responsable.')
+            return encontrado
+          })
           setCanje(c ?? null)
         }}
       >
@@ -703,7 +741,7 @@ export function Entregas({ usuario }: { usuario: Usuario }) {
             <h2>{rw.nombre}</h2>
             <dl className="dl">
               <dt>Usuario</dt>
-              <dd>{dueno?.nombre} · {dueno?.correo}</dd>
+              <dd>{dueno?.nombre}{dueno?.correo ? ` · ${dueno.correo}` : ''}</dd>
               <dt>Estado</dt>
               <dd><EstadoBadge estado={actual.estado} etiqueta={ETIQUETA_CANJE[actual.estado]} /></dd>
               <dt>Vence</dt>
@@ -746,12 +784,12 @@ export function Entregas({ usuario }: { usuario: Usuario }) {
         <details className="ayuda-demo">
           <summary>Códigos pendientes (demo)</summary>
           <div className="chips">
-            {db.canjes.filter((c) => c.estado === 'pendiente').map((c) => (
+            {db.canjes.filter((c) => c.estado === 'pendiente' && mias.has(c.recompensaId)).map((c) => (
               <button key={c.id} type="button" className="chip-boton" onClick={() => setCodigo(c.codigo)}>
                 <span className="codigo-mono">{c.codigo}</span>
               </button>
             ))}
-            {!db.canjes.some((c) => c.estado === 'pendiente') && <small>No hay canjes pendientes.</small>}
+            {!db.canjes.some((c) => c.estado === 'pendiente' && mias.has(c.recompensaId)) && <small>No hay canjes pendientes.</small>}
           </div>
         </details>
       </section>
@@ -820,7 +858,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
                   <option value="usuario">Usuario</option>
                   <option value="recolector">Recolector</option>
                   <option value="admin">Administrador</option>
-                  <option value="aliado" disabled>Aliado (Fase 2)</option>
+                  <option value="aliado">Aliado (entrega recompensas)</option>
                 </select>
               )}
             </Campo>
@@ -1070,6 +1108,89 @@ export function AdminAlertas({ usuario }: { usuario: Usuario }) {
           </form>
         )}
       </Modal>
+    </div>
+  )
+}
+
+// A04 – Resumen del aliado: cómo van sus recompensas y entregas
+export function ResumenAliado({ usuario }: { usuario: Usuario }) {
+  const { db } = useStore()
+  const mias = db.recompensas.filter((r) => r.aliadoId === usuario.id)
+  const ids = new Set(mias.map((r) => r.id))
+  const canjes = db.canjes.filter((c) => ids.has(c.recompensaId))
+  const hoy = new Date().setHours(0, 0, 0, 0)
+  const pendientes = canjes.filter((c) => c.estado === 'pendiente')
+  const entregadosHoy = canjes.filter((c) => c.estado === 'entregado' && (c.entregadoEn ?? 0) >= hoy).length
+  const puntos = canjes.filter((c) => !c.devuelto).reduce((t, c) => t + c.costo, 0)
+  const proximos = [...pendientes].sort((a, b) => a.venceEn - b.venceEn).slice(0, 5)
+
+  return (
+    <div className="pagina">
+      <Encabezado
+        titulo={`Hola, ${usuario.nombre}`}
+        descripcion="Así van las recompensas que entregas a los estudiantes."
+        acciones={<a className="btn btn-acento" href="#/aliado/entregas">Entregar un canje</a>}
+      />
+      <div className="stats stats-4">
+        <Stat etiqueta="Por entregar" valor={pendientes.length} nota="Códigos vigentes" tono="acento" />
+        <Stat etiqueta="Entregados hoy" valor={entregadosHoy} />
+        <Stat etiqueta="Canjes totales" valor={canjes.length} nota={`${canjes.filter((c) => c.estado === 'entregado').length} entregados`} />
+        <Stat etiqueta="EcoPoints canjeados" valor={fmtNumero(puntos)} />
+      </div>
+
+      <section className="bloque">
+        <div className="bloque-cab">
+          <h2>Mis recompensas</h2>
+          <a href="#/aliado/recompensas">Gestionar →</a>
+        </div>
+        {mias.length === 0 ? (
+          <Vacio titulo="Aún no publicas recompensas"><a href="#/aliado/recompensas">Crea la primera</a></Vacio>
+        ) : (
+          <div className="tabla-envoltura">
+            <table className="tabla">
+              <thead>
+                <tr>
+                  <th>Recompensa</th>
+                  <th className="num">Costo</th>
+                  <th className="num">Stock</th>
+                  <th className="num">Por entregar</th>
+                  <th className="num">Entregados</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mias.map((r) => (
+                  <tr key={r.id}>
+                    <td><span aria-hidden="true">{r.emoji}</span> {r.nombre}</td>
+                    <td className="num">{r.costo}</td>
+                    <td className="num">{r.stock === 0 ? <Badge tono="warn">Agotado</Badge> : r.stock}</td>
+                    <td className="num">{canjes.filter((c) => c.recompensaId === r.id && c.estado === 'pendiente').length}</td>
+                    <td className="num">{canjes.filter((c) => c.recompensaId === r.id && c.estado === 'entregado').length}</td>
+                    <td>{r.activa ? <Badge tono="ok">Activa</Badge> : <Badge>Inactiva</Badge>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="bloque">
+        <h2 className="h-bloque">Próximos a vencer</h2>
+        {proximos.length === 0 ? (
+          <p className="nota">No hay canjes pendientes de entrega.</p>
+        ) : (
+          <ul className="lista-simple">
+            {proximos.map((c) => (
+              <li key={c.id}>
+                <span className="codigo-mono">{c.codigo}</span>
+                <span>{db.recompensas.find((r) => r.id === c.recompensaId)?.nombre}</span>
+                <small>vence {fmtFechaHora(c.venceEn)}</small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

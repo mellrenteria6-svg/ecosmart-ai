@@ -25,7 +25,7 @@ app.use(express.json({ limit: '2mb' })) // las fotos viajan como imagen comprimi
 // ---------------------------------------------------------------------------
 // Límite de peticiones por IP (RNF04)
 // ---------------------------------------------------------------------------
-function limite(maximo: number, ventanaMs: number) {
+export function limite(maximo: number, ventanaMs: number) {
   const golpes = new Map<string, number[]>()
   return (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip ?? 'local'
@@ -159,8 +159,12 @@ api.post('/cuenta/eliminar', limite(10, 60_000), async (req, res) => {
   res.json({ eliminada: true })
 })
 
+// Límite de intentos solo en las rutas que se pueden usar para adivinar claves o códigos.
+// Cerrar sesión nunca se limita.
+const LIMITE_AUTH = Number(process.env.LIMITE_AUTH ?? 20)
+const limiteAuth = limite(LIMITE_AUTH, 60_000)
 const rutasAuth = express.Router()
-rutasAuth.use(limite(20, 60_000))
+rutasAuth.use((req, res, next) => (req.path === '/logout' ? next() : limiteAuth(req, res, next)))
 rutasAuth.post('/registro', async (req, res) => void res.json(await auth.registrar(req.body)))
 rutasAuth.post('/reenviar', async (req, res) => void res.json(await auth.reenviarVerificacion(req.body?.correo)))
 rutasAuth.post('/verificar', async (req, res) => void res.json(await auth.verificarCorreo(req.body?.token)))

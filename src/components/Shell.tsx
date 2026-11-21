@@ -32,7 +32,11 @@ const MENU: Record<Rol, { href: string; texto: string }[]> = {
     { href: '#/admin/instituciones', texto: 'Universidades' },
     { href: '#/admin/auditoria', texto: 'Auditoría' },
   ],
-  aliado: [{ href: '#/aliado', texto: 'Inicio' }],
+  aliado: [
+    { href: '#/aliado', texto: 'Resumen' },
+    { href: '#/aliado/entregas', texto: 'Entregar canjes' },
+    { href: '#/aliado/recompensas', texto: 'Mis recompensas' },
+  ],
 }
 
 /** Logo. Dentro de la aplicación lleva al inicio de cada rol, no a la portada pública. */

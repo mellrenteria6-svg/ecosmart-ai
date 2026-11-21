@@ -31,6 +31,7 @@ const ESTUDIANTE = 'u-estudiante'
 const DIEGO = 'u-diego'
 const RECOLECTOR = 'u-recolector'
 const ADMIN = 'u-admin'
+const ALIADO = 'u-aliado'
 const DIA = 86_400_000
 
 const db = (): Db => motorServidor.db()
@@ -218,6 +219,33 @@ describe('EcoPoints y canjes (RF15, RF18–RF20, RN07, RN08, RN15)', () => {
     const base = { nombre: 'Prueba', descripcion: '', stock: 5, responsable: 'Admin', activa: true, emoji: '🎁', procedencia: 'Campus', tipo: 'beneficio' as const }
     await expect(guardarRecompensa(ADMIN, { ...base, costo: 0, vigenciaDesde: '2026-01-01', vigenciaHasta: '2026-12-31' })).rejects.toThrow(/costo/)
     await expect(guardarRecompensa(ADMIN, { ...base, costo: 10, vigenciaDesde: '2026-12-31', vigenciaHasta: '2026-01-01' })).rejects.toThrow(/vigencia/)
+  })
+})
+
+describe('Aliado (RF17, RF19 — Fase 2)', () => {
+  const base = { nombre: 'Postre del día', descripcion: '', costo: 40, stock: 10, vigenciaDesde: '2026-01-01', vigenciaHasta: '2030-12-31', responsable: 'x', activa: true, emoji: '🍰', procedencia: 'x', tipo: 'sorteo' as const }
+
+  it('CP-RF19: el aliado entrega los canjes de sus recompensas y no los de otros', async () => {
+    const cafe = await crearCanje(ESTUDIANTE, 'rw-cafe', 'aliado-1') // la semilla vincula el café al aliado
+    expect((await entregarCanje(ALIADO, cafe.codigo)).estado).toBe('entregado')
+    await crearAjuste(ADMIN, ESTUDIANTE, 100, 'Saldo para la prueba')
+    const impresion = await crearCanje(ESTUDIANTE, 'rw-impresion', 'aliado-2')
+    await expect(entregarCanje(ALIADO, impresion.codigo)).rejects.toThrow(/otro responsable/)
+  })
+
+  it('CP-RF17: el aliado publica recompensas a su nombre y solo edita las suyas', async () => {
+    const r = await guardarRecompensa(ALIADO, base)
+    expect(r.aliadoId).toBe(ALIADO)
+    expect(r.tipo).toBe('beneficio') // un aliado no crea sorteos ni donaciones
+    expect(r.procedencia).toBe('Aliado: Cafetería El Roble')
+    const termo = db().recompensas.find((x) => x.id === 'rw-termo')!
+    await expect(guardarRecompensa(ALIADO, { ...termo, costo: 1 })).rejects.toThrow(/tus recompensas/)
+  })
+
+  it('la administración solo vincula recompensas a cuentas de aliado', async () => {
+    await expect(guardarRecompensa(ADMIN, { ...base, tipo: 'beneficio', aliadoId: ESTUDIANTE })).rejects.toThrow(/aliado activa/)
+    const r = await guardarRecompensa(ADMIN, { ...base, tipo: 'beneficio', aliadoId: ALIADO })
+    expect(r.responsable).toBe('Cafetería El Roble')
   })
 })
 

@@ -45,7 +45,7 @@ beforeAll(async () => {
   const puerto = 46000 + Math.floor(Math.random() * 1000)
   socket = new PGLiteSocketServer({ db, port: puerto, host: '127.0.0.1' })
   await socket.start()
-  Object.assign(process.env, { PGHOST: '127.0.0.1', PGPORT: String(puerto), PGUSER: 'postgres', PGPASSWORD: 'prueba', PGDATABASE: 'postgres', PG_POOL_MAX: '1', BANDEJA_DEMO: '1' })
+  Object.assign(process.env, { PGHOST: '127.0.0.1', PGPORT: String(puerto), PGUSER: 'postgres', PGPASSWORD: 'prueba', PGDATABASE: 'postgres', PG_POOL_MAX: '1', BANDEJA_DEMO: '1', LIMITE_AUTH: '1000' })
   const { app, pool } = await import('./app')
   cerrarPool = () => pool.end()
   servidor = app.listen(0)
@@ -58,6 +58,21 @@ afterAll(async () => {
   await cerrarPool()
   await socket?.stop()
   await db?.close()
+})
+
+describe('Límite de peticiones (CP-RNF04)', () => {
+  it('bloquea con 429 al superar el máximo por IP dentro de la ventana', async () => {
+    const { limite } = await import('./app')
+    const mw = limite(3, 60_000)
+    const estados: number[] = []
+    for (let i = 0; i < 5; i += 1) {
+      let estado = 200
+      const res = { status: (s: number) => ((estado = s), { json: () => undefined }) }
+      mw({ ip: '10.0.0.1' } as never, res as never, () => undefined)
+      estados.push(estado)
+    }
+    expect(estados).toEqual([200, 200, 200, 429, 429])
+  })
 })
 
 describe('API sobre PostgreSQL', () => {
@@ -113,6 +128,20 @@ describe('API sobre PostgreSQL', () => {
     await entrar('admin@universidad.edu.ec')
     expect((await api('/accion/entregarCanje', { args: ['x', codigoCanje] })).resultado.estado).toBe('entregado')
     expect((await api('/accion/entregarCanje', { args: ['x', codigoCanje] })).error).toMatch(/ya fue utilizado/)
+  })
+
+  it('CP-RF19: el aliado entra con segundo factor, ve solo sus canjes y entrega el suyo', async () => {
+    await entrar('admin@universidad.edu.ec')
+    await api('/accion/crearAjuste', { args: ['x', ana, 200, 'Saldo para canjes'] })
+    await entrar('ana.torres@espol.edu.ec', 'Clave2026x')
+    const cafe = (await api('/accion/crearCanje', { args: ['x', 'rw-cafe', 'api-canje-2'] })).resultado
+    const impresion = (await api('/accion/crearCanje', { args: ['x', 'rw-impresion', 'api-canje-3'] })).resultado
+    await entrar('aliado@universidad.edu.ec')
+    const e = await api('/estado')
+    expect(e.db.canjes.every((c: { recompensaId: string }) => c.recompensaId === 'rw-cafe')).toBe(true)
+    expect(e.db.auditoria).toHaveLength(0)
+    expect((await api('/accion/entregarCanje', { args: ['x', cafe.codigo] })).resultado.estado).toBe('entregado')
+    expect((await api('/accion/entregarCanje', { args: ['x', impresion.codigo] })).error).toMatch(/otro responsable/)
   })
 
   it('CP-RNF05: eliminar la cuenta exige la contraseña, anonimiza y revoca el acceso', async () => {

@@ -6,6 +6,7 @@ export const DEMO_CUENTAS = [
   { correo: 'estudiante@universidad.edu.ec', rol: 'Usuario' },
   { correo: 'recolector@universidad.edu.ec', rol: 'Recolector' },
   { correo: 'admin@universidad.edu.ec', rol: 'Administrador' },
+  { correo: 'aliado@universidad.edu.ec', rol: 'Aliado' },
 ]
 
 const DIA = 24 * 60 * 60 * 1000
