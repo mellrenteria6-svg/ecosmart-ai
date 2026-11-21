@@ -311,7 +311,7 @@ export function LotesCerrados({ usuario }: { usuario: Usuario }) {
       {lotes.length === 0 ? (
         <Vacio titulo="Todavía no cierras lotes" />
       ) : (
-        <div className="tabla-envoltura">
+        <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
           <table className="tabla">
             <thead>
               <tr>

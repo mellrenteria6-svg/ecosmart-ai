@@ -5,19 +5,19 @@
   --card: #fbf8f2;
   --ink: #1c2a22;
   --ink-2: #2d3f34;
-  --muted: #6b6a5e;
+  --muted: #626155; /* 4.9:1 o más sobre los fondos claros */
   --line: #d9cfbd;
   --line-2: #c7baa3;
-  --accent: #d9622b;
-  --accent-dark: #b04a1c;
+  --accent: #b04a1c; /* terracota AA: 5.5:1 con texto blanco */
+  --accent-dark: #8f3a14;
   --accent-soft: #f6dcc9;
   --moss: #2f5d46;
   --moss-soft: #dbe6d6;
   --lime: #c8e05a;
   --lime-soft: #eef4c9;
-  --ok: #2f7a4f;
+  --ok: #276a44;
   --ok-soft: #dcefe0;
-  --warn: #a66a00;
+  --warn: #875400;
   --warn-soft: #f8e9c4;
   --error: #b3261e;
   --error-soft: #f7dcd8;

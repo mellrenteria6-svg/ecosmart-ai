@@ -72,3 +72,5 @@ db/             Esquema, datos iniciales, migraciones e instalador
 ```
 
 Más detalles de la base de datos en [db/README.md](db/README.md).
+
+Verificación de accesibilidad WCAG 2.2 AA y responsive: [docs/accesibilidad-y-responsive.md](docs/accesibilidad-y-responsive.md).

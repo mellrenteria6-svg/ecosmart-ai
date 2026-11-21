@@ -162,7 +162,7 @@ export function Dashboard() {
           <div className="bloque-cab">
             <h2>Pendientes por punto</h2>
           </div>
-          <div className="tabla-envoltura">
+          <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
             <table className="tabla">
               <thead>
                 <tr>
@@ -396,7 +396,7 @@ export function AdminCategorias({ usuario }: { usuario: Usuario }) {
       />
       {aviso && <Alerta tono="ok">{aviso}</Alerta>}
       {error && !sel && !nueva && <Alerta tono="error">{error}</Alerta>}
-      <div className="tabla-envoltura">
+      <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
         <table className="tabla">
           <thead>
             <tr>
@@ -580,7 +580,7 @@ export function AdminRecompensas({ usuario }: { usuario: Usuario }) {
         acciones={<button type="button" className="btn btn-tinta" onClick={() => { setError(null); setEd(vacia) }}>+ Nueva recompensa</button>}
       />
       {esAliado && lista.length === 0 && <Vacio titulo="Aún no publicas recompensas">Crea la primera: aparecerá en el catálogo de los estudiantes.</Vacio>}
-      <div className="tabla-envoltura">
+      <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
         <table className="tabla">
           <thead>
             <tr>
@@ -812,7 +812,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
     <div className="pagina">
       <Encabezado titulo="Usuarios" descripcion="Bloquear una cuenta revoca sus sesiones sin borrar el historial." />
       <input className="input buscador" placeholder="Buscar por nombre o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar usuarios" />
-      <div className="tabla-envoltura">
+      <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
         <table className="tabla">
           <thead>
             <tr>
@@ -1146,7 +1146,7 @@ export function ResumenAliado({ usuario }: { usuario: Usuario }) {
         {mias.length === 0 ? (
           <Vacio titulo="Aún no publicas recompensas"><a href="#/aliado/recompensas">Crea la primera</a></Vacio>
         ) : (
-          <div className="tabla-envoltura">
+          <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
             <table className="tabla">
               <thead>
                 <tr>

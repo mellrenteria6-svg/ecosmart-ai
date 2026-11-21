@@ -196,7 +196,7 @@ export function Impacto({ usuario }: { usuario: Usuario }) {
               </span>
             ))}
           </div>
-          <div className="tabla-envoltura">
+          <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
             <table className="tabla">
               <thead>
                 <tr>

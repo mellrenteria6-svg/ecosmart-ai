@@ -1,5 +1,5 @@
 import { desactivar as desactivarAvisos } from '../lib/push'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { alternarOfflineSimulado, cerrarSesion, useStore } from '../data/store'
 import type { Rol, Usuario } from '../data/types'
@@ -43,11 +43,12 @@ const MENU: Record<Rol, { href: string; texto: string }[]> = {
 /** Logo. Dentro de la aplicación lleva al inicio de cada rol, no a la portada pública. */
 export function Marca({ href = '#/' }: { href?: string }) {
   return (
-    <a className="brand" href={href} aria-label="EcoSmart AI, inicio">
+    <a className="brand" href={href}>
       <span className="brand-mark" aria-hidden="true">
         E
       </span>
       <span>EcoSmart AI</span>
+      <span className="sr-only">, ir al inicio</span>
     </a>
   )
 }
@@ -74,6 +75,13 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
   const s = useStore()
   const ruta = useRuta()
   const [menuAbierto, setMenuAbierto] = useState(false)
+  // Escape cierra el menú del celular (RNF08)
+  useEffect(() => {
+    if (!menuAbierto) return
+    const alPresionar = (e: KeyboardEvent) => e.key === 'Escape' && setMenuAbierto(false)
+    window.addEventListener('keydown', alPresionar)
+    return () => window.removeEventListener('keydown', alPresionar)
+  }, [menuAbierto])
   const items = MENU[usuario.rol]
   const actual = '#' + ruta.path
   const activo = (href: string) => {
@@ -82,6 +90,12 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
     return actual === href || actual.startsWith(href + '/')
   }
   const noLeidas = s.db.notificaciones.filter((n) => n.usuarioId === usuario.id && !n.leida).length
+  const salir = async () => {
+    // Este dispositivo deja de recibir avisos de la cuenta que cierra sesión
+    await desactivarAvisos().catch(() => undefined)
+    cerrarSesion()
+    navegar('/ingresar')
+  }
 
   return (
     <div className="shell">
@@ -97,6 +111,10 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
                 {i.texto}
               </a>
             ))}
+            {/* En pantallas angostas "Salir" vive dentro del menú para que el encabezado quepa */}
+            <button type="button" className="salir-movil" onClick={salir}>
+              Salir
+            </button>
           </nav>
           <div className="shell-acciones">
             <IndicadorConexion />
@@ -118,19 +136,10 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
                 <small>{ETIQUETA_ROL[usuario.rol]}</small>
               </span>
             </a>
-            <button
-              type="button"
-              className="btn btn-fantasma btn-sm"
-              onClick={async () => {
-                // Este dispositivo deja de recibir avisos de la cuenta que cierra sesión
-                await desactivarAvisos().catch(() => undefined)
-                cerrarSesion()
-                navegar('/ingresar')
-              }}
-            >
+            <button type="button" className="btn btn-fantasma btn-sm salir-escritorio" onClick={salir}>
               Salir
             </button>
-            <button type="button" className="btn-icono menu-movil" aria-expanded={menuAbierto} aria-label="Abrir menú" onClick={() => setMenuAbierto((v) => !v)}>
+            <button type="button" className="btn-icono menu-movil" aria-expanded={menuAbierto} aria-label={menuAbierto ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setMenuAbierto((v) => !v)}>
               ☰
             </button>
           </div>

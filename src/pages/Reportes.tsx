@@ -145,7 +145,7 @@ export function Reportes({ usuario, reporteId }: { usuario: Usuario; reporteId?:
               {res.filas.length === 0 ? (
                 <Vacio titulo="Sin datos para estos filtros">Prueba con un rango de fechas más amplio.</Vacio>
               ) : (
-                <div className="tabla-envoltura">
+                <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
                   <table className="tabla tabla-reporte">
                     <thead>
                       <tr>
