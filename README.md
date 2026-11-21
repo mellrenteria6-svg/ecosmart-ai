@@ -18,6 +18,7 @@ Proyecto de **Diseño de Sistemas / Ingeniería de Software II** (noviembre de 2
 - **IA:** CLIP ViT-B/32 cuantizado que corre en el navegador (Web Worker), con clasificación *zero-shot* en 6 categorías.
 - **Varias universidades:** DEMO, ESPOL, ECOTEC, UCSG y UEES, cada una con sus dominios de correo.
 - **Sin conexión:** los reciclajes se guardan en una cola local y se sincronizan al volver la red.
+- **Avisos push:** el usuario puede activar notificaciones del navegador; si no da permiso, los avisos siguen en la app.
 - **Privacidad:** fotos visibles solo para el recolector y la administración, borradas a los 90 días; eliminación de cuenta con anonimización.
 
 ## Tecnologías
@@ -54,7 +55,7 @@ Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.e
 ## Pruebas
 
 ```bash
-npm test            # 54 pruebas: reglas de negocio, base de datos y API
+npm test            # 56 pruebas: reglas de negocio, base de datos y API
 npm run verificar   # lint + tipos + pruebas + construcción
 ```
 

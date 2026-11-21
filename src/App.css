@@ -4536,3 +4536,41 @@ textarea.input {
 .aviso-privacidad {
   padding: 32px 0 60px;
 }
+
+/* Avisos push (RF23) */
+.avisos-push {
+  display: grid;
+  gap: 12px;
+}
+.avisos-cab {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.avisos-cab .h-bloque {
+  margin-bottom: 4px;
+}
+.avisos-cab .nota {
+  margin: 0;
+}
+.avisos-icono {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--paper-2);
+  font-size: 1.3rem;
+}
+.avisos-activo {
+  border-color: var(--ok);
+}
+.avisos-activo .avisos-icono {
+  background: var(--ok-soft);
+}
+.avisos-acciones {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

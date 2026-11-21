@@ -25,7 +25,7 @@ afterAll(async () => {
 describe('Esquema PostgreSQL', () => {
   it('crea todas las tablas y carga las universidades', async () => {
     const t = await uno<{ n: number }>("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
-    expect(t.n).toBe(21) // 18 del esquema + institucion, institucion_dominio y correo_simulado
+    expect(t.n).toBe(22) // 18 del esquema + institucion, institucion_dominio, correo_simulado y suscripcion_push
     const u = await uno<{ s: string }>("SELECT string_agg(siglas, ',' ORDER BY siglas) AS s FROM institucion")
     expect(u.s).toBe('DEMO,ECOTEC,ESPOL,UCSG,UEES')
   })

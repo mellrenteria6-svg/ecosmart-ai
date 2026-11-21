@@ -17,6 +17,8 @@ import { Alerta, Campo, Encabezado, EstadoBadge, Modal, Puntos, Vacio, useAccion
 import { ChipCategoria, MapaCampus, Qr, fotoVisible } from '../components/Visual'
 import { ColaOffline } from './Reciclar'
 import { Insignias } from './Comunidad'
+import { AvisosPush } from '../components/AvisosPush'
+import { desactivar as desactivarAvisos } from '../lib/push'
 import { ETIQUETA_CANJE, ETIQUETA_PUNTO, ETIQUETA_RECICLAJE, fmtFecha, fmtFechaHora, fmtNumero, fmtPct, hace, tiempoRestante } from '../lib/formato'
 import { navegar } from '../lib/router'
 
@@ -528,6 +530,7 @@ export function Notificaciones({ usuario }: { usuario: Usuario }) {
   return (
     <div className="pagina pagina-estrecha">
       <Encabezado titulo="Notificaciones" descripcion="Los avisos permanecen aquí aunque no actives las notificaciones push." />
+      <AvisosPush />
       {lista.length === 0 ? (
         <Vacio titulo="Sin notificaciones" />
       ) : (
@@ -624,6 +627,7 @@ function EliminarCuenta({ usuario }: { usuario: Usuario }) {
             e.preventDefault()
             const ok = await ejecutar(async () => {
               await eliminarMiCuenta(password)
+              await desactivarAvisos().catch(() => undefined)
               return true
             })
             if (ok) navegar('/ingresar?eliminada=1')

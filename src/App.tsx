@@ -5,6 +5,7 @@ import type { Rol, Usuario } from './data/types'
 import { Shell } from './components/Shell'
 import { Vacio } from './components/ui'
 import { navegar, useRuta } from './lib/router'
+import { vigilarAvisosLocales } from './lib/push'
 import { Portada } from './pages/Portada'
 import { BandejaCorreo, Ingresar, Recuperar, Registro, Restablecer, Verificar } from './pages/Acceso'
 import { AvisoPrivacidad, Catalogo, Historial, InicioUsuario, MisCanjes, Notificaciones, Perfil, PuntosCampus } from './pages/Usuario'
@@ -84,6 +85,8 @@ export default function App() {
   const s = useStore()
   const { path, partes, query } = useRuta()
   const u = usuarioActual(s)
+
+  useEffect(() => vigilarAvisosLocales(), [])
 
   useEffect(() => {
     procesarVencimientos()

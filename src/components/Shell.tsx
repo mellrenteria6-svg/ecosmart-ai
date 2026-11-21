@@ -1,3 +1,4 @@
+import { desactivar as desactivarAvisos } from '../lib/push'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { alternarOfflineSimulado, cerrarSesion, useStore } from '../data/store'
@@ -120,7 +121,9 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
             <button
               type="button"
               className="btn btn-fantasma btn-sm"
-              onClick={() => {
+              onClick={async () => {
+                // Este dispositivo deja de recibir avisos de la cuenta que cierra sesión
+                await desactivarAvisos().catch(() => undefined)
                 cerrarSesion()
                 navegar('/ingresar')
               }}

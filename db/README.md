@@ -19,6 +19,7 @@ powershell -ExecutionPolicy Bypass -File db\instalar.ps1
 | `migraciones/004_uees.sql` | Universidad Espíritu Santo (`uees.edu.ec`) |
 | `migraciones/005_privacidad.sql` | Eliminación de cuenta (anonimizada) y retención de fotos (RNF05) |
 | `migraciones/006_aliado.sql` | Cuenta de aliado de demostración (Cafetería El Roble) |
+| `migraciones/007_push.sql` | Suscripciones para notificaciones push (RF23) |
 
 Si la base ya existe y `server/.env` está configurado, también sirve `npm run db:migrar`.
 
@@ -56,7 +57,7 @@ Diagrama: en pgAdmin, clic derecho sobre la base `ecosmart` → **ERD For Databa
 ## Pruebas automáticas (RNF10)
 
 ```bash
-npm test            # 54 pruebas: reglas de negocio, base de datos y API
+npm test            # 56 pruebas: reglas de negocio, base de datos y API
 npm run verificar   # lint + tipos + pruebas + construcción (lo mismo que corre GitHub Actions)
 ```
 

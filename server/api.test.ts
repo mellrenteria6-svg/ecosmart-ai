@@ -6,7 +6,9 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import webpush from 'web-push'
 import { crearBasePrueba } from '../db/base-prueba'
+import type { AvisoPush, SuscripcionPush } from './push'
 
 let db: PGlite
 let socket: PGLiteSocketServer
@@ -14,6 +16,12 @@ let servidor: Server
 let base = ''
 let token: string | null = null
 let cerrarPool: () => Promise<void> = async () => {}
+let esperarEnvios: () => Promise<void> = async () => {}
+
+// Push simulado: registra cada aviso en vez de enviarlo; un endpoint "caducado" responde 410
+const enviados: { endpoint: string; aviso: AvisoPush }[] = []
+const CADUCADA = 'https://push.example.org/caducada'
+const suscripcionDe = (nombre: string): SuscripcionPush => ({ endpoint: `https://push.example.org/${nombre}`, keys: { p256dh: 'clave-p256dh', auth: 'clave-auth' } })
 
 type Respuesta = { status: number } & Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -46,7 +54,15 @@ beforeAll(async () => {
   socket = new PGLiteSocketServer({ db, port: puerto, host: '127.0.0.1' })
   await socket.start()
   Object.assign(process.env, { PGHOST: '127.0.0.1', PGPORT: String(puerto), PGUSER: 'postgres', PGPASSWORD: 'prueba', PGDATABASE: 'postgres', PG_POOL_MAX: '1', BANDEJA_DEMO: '1', LIMITE_AUTH: '1000' })
+  const vapid = webpush.generateVAPIDKeys()
+  Object.assign(process.env, { VAPID_PUBLICA: vapid.publicKey, VAPID_PRIVADA: vapid.privateKey })
   const { app, pool } = await import('./app')
+  const push = await import('./push')
+  push.configurarEnvio(async (s, aviso) => {
+    if (s.endpoint === CADUCADA) throw Object.assign(new Error('Gone'), { statusCode: 410 })
+    enviados.push({ endpoint: s.endpoint, aviso })
+  })
+  esperarEnvios = push.esperarEnvios
   cerrarPool = () => pool.end()
   servidor = app.listen(0)
   await new Promise((r) => servidor.once('listening', r))
@@ -110,12 +126,36 @@ describe('API sobre PostgreSQL', () => {
     expect(r.resultado.reciclaje.estado).toBe('pendiente')
   })
 
+  it('CP-RF23: el usuario suscribe su dispositivo para recibir avisos push', async () => {
+    expect((await api('/push/clave')).clave).toMatch(/^[A-Za-z0-9_-]{80,}$/)
+    expect((await api('/push/suscribir', { suscripcion: { endpoint: 'http://inseguro', keys: {} } })).status).toBe(400)
+    expect((await api('/push/suscribir', { suscripcion: suscripcionDe('ana-celular') })).activo).toBe(true)
+    expect((await api('/push/suscribir', { suscripcion: { endpoint: CADUCADA, keys: { p256dh: 'x', auth: 'y' } } })).activo).toBe(true)
+    const guardadas = await db.query(`SELECT endpoint FROM suscripcion_push WHERE usuario_id = '${ana}' ORDER BY endpoint`)
+    expect(guardadas.rows).toHaveLength(2)
+    const sinSesion = token
+    token = null
+    expect((await api('/push/suscribir', { suscripcion: suscripcionDe('intruso') })).status).toBe(401)
+    token = sinSesion
+  })
+
   it('CP-RF14: el recolector valida y los puntos llegan al saldo', async () => {
     await entrar('recolector@universidad.edu.ec')
     const pendiente = (await api('/estado')).db.reciclajes.find((x: { idempotencyKey: string }) => x.idempotencyKey === 'api-1')
     expect(pendiente.foto).toBe(foto)
     const r = await api('/accion/cerrarLote', { args: ['x', 'p-biblioteca', [{ reciclajeId: pendiente.id, accion: 'validar' }]] })
     expect(r.resultado.validados).toBe(1)
+  })
+
+  it('CP-RF23: al validar, el aviso llega por push y la suscripción caducada se borra', async () => {
+    await esperarEnvios()
+    const aviso = enviados.find((e) => e.endpoint === suscripcionDe('ana-celular').endpoint)
+    expect(aviso?.aviso.titulo).toBe('Reciclaje validado')
+    expect(aviso?.aviso.mensaje).toMatch(/30 EcoPoints/)
+    expect(aviso?.aviso.url).toBe('#/app/notificaciones')
+    expect(enviados.some((e) => e.endpoint.includes('recolector'))).toBe(false) // nadie más recibe el aviso de Ana
+    const caducada = await db.query(`SELECT 1 FROM suscripcion_push WHERE endpoint = '${CADUCADA}'`)
+    expect(caducada.rows).toHaveLength(0)
   })
 
   it('CP-RNF13: el administrador entra con segundo factor y entrega el canje una sola vez', async () => {
@@ -157,6 +197,8 @@ describe('API sobre PostgreSQL', () => {
     expect(fila.nombre).toBe('Cuenta eliminada')
     expect(fila.correo).toMatch(/@anonimo\.invalid$/)
     expect(fila.fotos).toBe(0)
+    const subs = await db.query(`SELECT 1 FROM suscripcion_push WHERE usuario_id = '${ana}'`)
+    expect(subs.rows).toHaveLength(0) // un dispositivo no sigue recibiendo avisos de una cuenta eliminada
   })
 
   it('CP-RF02: cerrar sesión revoca el token', async () => {

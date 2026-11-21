@@ -14,6 +14,7 @@ import { cargarDb, guardarCambios, pool } from './db'
 export { pool }
 import { vistaPara } from './vista'
 import * as auth from './auth'
+import * as push from './push'
 import { ErrorHttp } from './auth'
 
 const BANDEJA_DEMO = process.env.BANDEJA_DEMO !== '0' // bandeja de correo simulada (solo para demostración)
@@ -68,14 +69,18 @@ async function conBase<T>(usuarioId: string | null, fn: (actual: Usuario | null)
         // Una regla de negocio rechazó la acción: no se aplicó nada de ella, pero sí se guardan
         // los efectos previos que la regla registra a propósito (por ejemplo, alertas antifraude).
         if (e instanceof ApiError) {
-          await guardarCambios(c, antes, motorServidor.db())
+          const parcial = motorServidor.db()
+          await guardarCambios(c, antes, parcial)
           await c.query('COMMIT')
+          push.enviarNuevasEnSegundoPlano(antes, parcial)
         }
         throw e
       }
       const despues = motorServidor.db()
       await guardarCambios(c, antes, despues)
       await c.query('COMMIT')
+      // RF23: las notificaciones nuevas salen también como push (sin hacer esperar la respuesta)
+      push.enviarNuevasEnSegundoPlano(antes, despues)
       return { resultado, db: despues }
     } catch (e) {
       await c.query('ROLLBACK').catch(() => {})
@@ -147,6 +152,30 @@ api.post('/accion/:nombre', limite(120, 60_000), async (req, res) => {
 })
 
 // RNF05: el titular elimina su cuenta confirmando su contraseña; los datos se anonimizan
+// RF23 – Notificaciones push: clave pública, suscribir y cancelar este dispositivo
+api.get('/push/clave', (_req, res) => void res.json({ clave: push.clavesVapid().publica }))
+api.post('/push/suscribir', limite(30, 60_000), async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
+  try {
+    await push.guardarSuscripcion(id, req.body?.suscripcion, req.headers['user-agent'])
+  } catch {
+    return void res.status(400).json({ error: 'La suscripción del navegador no es válida.' })
+  }
+  res.json({ activo: true })
+})
+api.post('/push/cancelar', async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (id) await push.borrarSuscripcion(id, req.body?.endpoint)
+  res.json({ activo: false })
+})
+api.post('/push/prueba', limite(5, 60_000), async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
+  const entregados = await push.enviarA(id, { titulo: 'EcoSmart AI', mensaje: '¡Listo! Así te llegarán los avisos de tus reciclajes y canjes.', url: '#/' })
+  res.json({ entregados })
+})
+
 api.post('/cuenta/eliminar', limite(10, 60_000), async (req, res) => {
   const id = await auth.usuarioDeToken(tokenDe(req))
   if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
@@ -156,6 +185,7 @@ api.post('/cuenta/eliminar', limite(10, 60_000), async (req, res) => {
     return eliminarCuentaLocal(yo.id)
   })
   await auth.invalidarCredenciales(id)
+  await push.borrarSuscripcionesDe(id)
   res.json({ eliminada: true })
 })
 
