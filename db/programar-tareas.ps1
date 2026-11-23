@@ -35,7 +35,7 @@ if ($Quitar) {
 
 $pgpass = Join-Path $env:APPDATA 'postgresql\pgpass.conf'
 if (-not (Test-Path -LiteralPath $pgpass) -and -not $env:PGPASSFILE) {
-  throw "Primero cree $pgpass con la linea localhost:5432:ecosmart:postgres:SU_CLAVE (ver docs\continuidad-y-capacidad.md)."
+  throw "Falta $pgpass. Primero corra: powershell -ExecutionPolicy Bypass -File db\guardar-clave.ps1"
 }
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { throw 'No se encontro node.exe en el PATH.' }

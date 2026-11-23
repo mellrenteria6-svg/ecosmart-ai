@@ -7,7 +7,7 @@ y respaldo diario), **RNF09** (capacidad), **RNF11** (calidad de la IA) y **RNF1
 |---|---|---|---|
 | RNF02 | p95 de páginas ≤ 2 s | p95 **0,24 s** solo páginas; **0,98 s** con 10 % de escrituras | `docs/evidencias/carga-*.json` |
 | RNF09 | 5000 cuentas y 100 usuarios concurrentes, errores < 1 % | 5009 cuentas, 100 concurrentes, **0 %** de errores en 3 corridas seguidas | `docs/evidencias/carga-mixta-100-usuarios.json` |
-| RNF06 | Monitoreo calcula disponibilidad ≥ 99 %; cada respaldo deja evidencia | Monitor cada 5 min + informe; registro CSV con SHA-256 por respaldo | `monitoreo/disponibilidad.csv`, `db/respaldos/registro-respaldos.csv` |
+| RNF06 | Monitoreo calcula disponibilidad ≥ 99 %; cada respaldo deja evidencia | Tareas programadas activas: monitor cada 5 min + informe; respaldo diario con registro CSV y SHA-256 | `monitoreo/disponibilidad.csv`, `db/respaldos/registro-respaldos.csv` |
 | RNF12 | RPO 24 h, RTO 4 h; restauración probada antes de cada entrega | Respaldo **1,1 s**; restauración en base separada **2,7 s** con conteos idénticos | `db/respaldos/registro-restauraciones.csv` |
 | RNF04 | Rechazar roles no autorizados, archivos inválidos y exceso de peticiones; sin secretos en logs | Validación de fotos JPEG, cabeceras de seguridad, HTTPS forzable, logs sin cuerpos | Pruebas `CP-RNF04` en `server/api.test.ts` |
 | RNF11 | F1 macro ≥ 85 % y recall ≥ 80 % por categoría en un conjunto separado | Herramienta lista; **falta el conjunto de fotos del equipo** | `ia/evaluacion/README.md` |
@@ -56,17 +56,11 @@ restaurar sobre `ecosmart`.
 ### Clave para las tareas programadas
 
 Las tareas corren sin nadie frente al equipo, así que la clave va en el archivo estándar de
-PostgreSQL, visible solo para la cuenta de Windows que ejecuta la tarea:
+PostgreSQL (`%APPDATA%\postgresql\pgpass.conf`). Este script la copia de `server\.env` (o la pide
+oculta si no existe), sin mostrarla, y deja el archivo legible solo para la cuenta de Windows actual:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:APPDATA\postgresql" | Out-Null
-notepad "$env:APPDATA\postgresql\pgpass.conf"
-```
-
-Escriba una línea `localhost:5432:ecosmart:postgres:SU_CLAVE`, guarde, y restrinja el acceso:
-
-```powershell
-icacls "$env:APPDATA\postgresql\pgpass.conf" /inheritance:r /grant:r "${env:USERNAME}:F"
+powershell -ExecutionPolicy Bypass -File db\guardar-clave.ps1
 ```
 
 Con `-Desatendido`, `respaldo.ps1` nunca pide la clave por teclado: si no encuentra este archivo
@@ -86,6 +80,10 @@ actual:
 powershell -ExecutionPolicy Bypass -File db\programar-tareas.ps1          # registrar
 powershell -ExecutionPolicy Bypass -File db\programar-tareas.ps1 -Quitar  # quitar
 ```
+
+**Comprobado el 22 de noviembre de 2026:** ambas tareas registradas; el respaldo lanzado por la
+tarea, sin pedir clave, terminó en 0,5 s y quedó verificado (183 objetos, SHA-256 anotado), y el
+monitoreo escribió su primera verificación (disponible, 78 ms).
 
 `/api/salud` responde solo si la API funciona **y** PostgreSQL contesta. Cada verificación agrega una
 línea a `monitoreo/disponibilidad.csv` (fuera de Git).
