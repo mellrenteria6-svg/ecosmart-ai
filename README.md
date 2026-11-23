@@ -51,7 +51,7 @@ npm run dev:bd                                                 # página en http
 
 En Windows, si PowerShell bloquea `npm`, usa `npm.cmd`. También puedes dar doble clic a **`Iniciar EcoSmart.cmd`**: prende el servidor y la página y abre el navegador.
 
-**Correos reales** (verificación, código de acceso y recuperación de contraseña): sin configurar, llegan a la bandeja simulada. Para enviarlos de verdad desde una cuenta de Gmail (con verificación en 2 pasos y una [contraseña de aplicación](https://myaccount.google.com/apppasswords)):
+**Correos reales** (verificación, código de acceso y recuperación de contraseña): sin configurar, llegan a la bandeja simulada. Para enviarlos de verdad desde Gmail (con [contraseña de aplicación](https://myaccount.google.com/apppasswords)) o desde [Brevo](https://www.brevo.com) (gratis, 300 al día, sin contraseña de aplicación):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File server\configurar-correo.ps1
