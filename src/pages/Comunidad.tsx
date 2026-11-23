@@ -108,6 +108,9 @@ export function EcoRanking({ usuario }: { usuario: Usuario }) {
                 ),
               )}
             </div>
+            {db.rankings && filas.length > db.rankings.mostrados && (
+              <p className="nota">Se muestran los {db.rankings.mostrados} primeros puestos y el tuyo.</p>
+            )}
             <ol className="ranking-lista">
               {filas.map((f) => (
                 <li key={f.usuario.id} className={f.usuario.id === usuario.id ? 'soy-yo' : ''}>

@@ -71,8 +71,9 @@ const MATERIALES = ['Botellas PET', 'Otros plásticos', 'Papel y cartón', 'Vidr
 
 export function Portada() {
   const { db } = useStore()
-  const validados = db.reciclajes.filter((r) => r.estado === 'validado').length
-  const otorgados = db.movimientos.filter((m) => m.tipo === 'reciclaje').reduce((t, m) => t + m.puntos, 0)
+  // En modo base de datos los totales llegan calculados por el servidor
+  const validados = db.resumenPublico?.reciclajesValidados ?? db.reciclajes.filter((r) => r.estado === 'validado').length
+  const otorgados = db.resumenPublico?.ecopointsOtorgados ?? db.movimientos.filter((m) => m.tipo === 'reciclaje').reduce((t, m) => t + m.puntos, 0)
   const activos = db.puntos.filter((p) => p.estado === 'activo').length
 
   return (

@@ -32,6 +32,45 @@ const ms = (v: unknown) => (v instanceof Date ? v.getTime() : v == null ? undefi
 const fecha = (v: number | undefined) => (v == null ? null : new Date(v))
 const opt = <T,>(v: T | null) => (v == null ? undefined : v)
 
+const filaAUsuario = (r: Fila): Usuario => ({
+  id: r.id as string,
+  nombre: r.nombre as string,
+  correo: r.correo as string,
+  institucionId: r.institucion_id as string,
+  facultad: r.facultad as string,
+  rol: r.rol as Usuario['rol'],
+  passwordHash: '', // las contraseñas nunca salen de PostgreSQL
+  verificado: r.verificado as boolean,
+  bloqueado: r.bloqueado as boolean,
+  intentosFallidos: r.intentos_fallidos as number,
+  bloqueoTemporalHasta: ms(r.bloqueo_temporal_hasta),
+  sesionVersion: r.sesion_version as number,
+  creadoEn: ms(r.creado_en)!,
+  consentimientoPrivacidad: r.consentimiento_privacidad as boolean,
+  rankingAnonimo: r.ranking_anonimo as boolean,
+  eliminadoEn: ms(r.eliminado_en),
+})
+
+/** Solo las cuentas: se refrescan antes de cada escritura (el inicio de sesión las modifica fuera del motor). */
+export async function cargarUsuarios(c: PoolClient): Promise<Usuario[]> {
+  return ((await c.query('SELECT * FROM usuario ORDER BY creado_en')).rows as Fila[]).map(filaAUsuario)
+}
+
+/** Marca de una foto que existe en PostgreSQL pero no se cargó en memoria. */
+export const FOTO_EN_BASE = 'remota'
+const COLUMNAS_RECICLAJE = [
+  'id', 'idempotency_key', 'usuario_id', 'punto_id', 'categoria_id', 'categoria_ia', 'confianza_ia', 'modelo_version',
+  'corregido_por_usuario', 'cantidad_reportada', 'cantidad_final', 'motivo_cantidad', 'unidad', 'puntos_por_unidad',
+  'categoria_version', 'puntos_estimados', 'estado', 'motivo_revision', 'motivo_rechazo', 'foto_hash', 'creado_en',
+  'validado_en', 'validado_por', 'lote_id',
+].join(', ')
+
+/** Foto de un reciclaje leída directamente de PostgreSQL. */
+export async function leerFoto(id: string): Promise<string> {
+  const { rows } = await pool.query('SELECT foto_url FROM reciclaje WHERE id = $1', [id])
+  return (rows[0]?.foto_url as string | undefined) ?? ''
+}
+
 // ---------------------------------------------------------------------------
 // Lectura: PostgreSQL → Db
 // ---------------------------------------------------------------------------
@@ -44,7 +83,8 @@ export async function cargarDb(c: PoolClient): Promise<Db> {
   const categorias = await q('SELECT * FROM categoria_residuo ORDER BY nombre = \'Plástico PET\' DESC, nombre')
   const puntos = await q(`SELECT p.*, COALESCE(array_agg(pc.categoria_id) FILTER (WHERE pc.categoria_id IS NOT NULL), '{}') AS categorias
                           FROM punto_reciclaje p LEFT JOIN punto_categoria pc ON pc.punto_id = p.id GROUP BY p.id ORDER BY p.codigo_qr`)
-  const reciclajes = await q('SELECT * FROM reciclaje ORDER BY creado_en')
+  // Las fotos no se cargan en memoria (pesan mucho): quedan en PostgreSQL y se piden una por una
+  const reciclajes = await q(`SELECT ${COLUMNAS_RECICLAJE}, CASE WHEN foto_url = '' THEN '' ELSE '${FOTO_EN_BASE}' END AS foto_url FROM reciclaje ORDER BY creado_en`)
   const movimientos = await q('SELECT * FROM movimiento_puntos ORDER BY creado_en')
   const asignaciones = await q('SELECT * FROM asignacion_recolector ORDER BY creado_en')
   const lotes = await q('SELECT l.*, COALESCE((SELECT array_agg(r.id::text) FROM reciclaje r WHERE r.lote_id = l.id), \'{}\') AS reciclajes FROM lote_validacion l ORDER BY creado_en')
@@ -66,24 +106,7 @@ export async function cargarDb(c: PoolClient): Promise<Db> {
       factorImpactoVersion: cfg.factor_impacto_version as string,
     },
     instituciones: instituciones.map((r): Institucion => ({ id: r.id as string, nombre: r.nombre as string, siglas: r.siglas as string, dominios: r.dominios as string[], activa: r.activa as boolean })),
-    usuarios: usuarios.map((r): Usuario => ({
-      id: r.id as string,
-      nombre: r.nombre as string,
-      correo: r.correo as string,
-      institucionId: r.institucion_id as string,
-      facultad: r.facultad as string,
-      rol: r.rol as Usuario['rol'],
-      passwordHash: '', // las contraseñas nunca salen de PostgreSQL
-      verificado: r.verificado as boolean,
-      bloqueado: r.bloqueado as boolean,
-      intentosFallidos: r.intentos_fallidos as number,
-      bloqueoTemporalHasta: ms(r.bloqueo_temporal_hasta),
-      sesionVersion: r.sesion_version as number,
-      creadoEn: ms(r.creado_en)!,
-      consentimientoPrivacidad: r.consentimiento_privacidad as boolean,
-      rankingAnonimo: r.ranking_anonimo as boolean,
-      eliminadoEn: ms(r.eliminado_en),
-    })),
+    usuarios: usuarios.map(filaAUsuario),
     puntos: puntos.map((r): PuntoReciclaje => ({
       id: r.id as string,
       nombre: r.nombre as string,
@@ -304,23 +327,41 @@ const filaCorreo: Mapeo<CorreoSimulado> = (m) => ({ id: m.id, para: m.para, asun
 const filaInstitucion: Mapeo<Institucion> = (i) => ({ id: i.id, nombre: i.nombre, siglas: i.siglas, activa: i.activa })
 
 async function insertar(c: PoolClient, tabla: string, fila: Fila) {
+  if (fila.foto_url === FOTO_EN_BASE) throw new Error('Una foto no cargada en memoria no puede insertarse')
   const cols = Object.keys(fila)
   await c.query(`INSERT INTO ${tabla} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, Object.values(fila))
 }
 
 async function actualizar(c: PoolClient, tabla: string, fila: Fila, antes: Fila, excluir: string[] = []) {
-  const cols = Object.keys(fila).filter((k) => k !== 'id' && !excluir.includes(k) && JSON.stringify(fila[k]) !== JSON.stringify(antes[k]))
+  // La marca "remota" nunca se escribe: la foto real sigue en la base
+  const cols = Object.keys(fila).filter((k) => k !== 'id' && !excluir.includes(k) && !(k === 'foto_url' && fila[k] === FOTO_EN_BASE) && JSON.stringify(fila[k]) !== JSON.stringify(antes[k]))
   if (!cols.length) return
   await c.query(`UPDATE ${tabla} SET ${cols.map((k, i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [fila.id, ...cols.map((k) => fila[k])])
 }
 
 /** Inserta lo nuevo y actualiza lo modificado (comparando por id). */
+/** Comparación superficial: casi todas las filas no cambian y así se descartan sin serializarlas. */
+function mismaFila(a: object, b: object) {
+  if (a === b) return true
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  for (const k of ka) {
+    const x = (a as Record<string, unknown>)[k]
+    const y = (b as Record<string, unknown>)[k]
+    if (x === y) continue
+    if (typeof x !== 'object' || typeof y !== 'object' || x === null || y === null) return false
+    if (JSON.stringify(x) !== JSON.stringify(y)) return false
+  }
+  return true
+}
+
 async function sincronizar<T extends { id: string }>(c: PoolClient, tabla: string, antes: T[], despues: T[], mapa: Mapeo<T>, opciones: { soloInsertar?: boolean; excluir?: string[] } = {}) {
+  if (antes === despues) return // la acción no tocó esta tabla
   const previos = new Map(antes.map((x) => [x.id, x]))
   for (const x of despues) {
     const previo = previos.get(x.id)
     if (!previo) await insertar(c, tabla, mapa(x))
-    else if (!opciones.soloInsertar) await actualizar(c, tabla, mapa(x), mapa(previo), opciones.excluir)
+    else if (!opciones.soloInsertar && !mismaFila(x, previo)) await actualizar(c, tabla, mapa(x), mapa(previo), opciones.excluir)
   }
 }
 
@@ -362,6 +403,7 @@ export async function guardarCambios(c: PoolClient, antes: Db, despues: Db) {
   await sincronizar(c, 'alerta_fraude', antes.alertas, despues.alertas, filaAlerta)
   await sincronizar(c, 'correo_simulado', antes.correos, despues.correos, filaCorreo, { soloInsertar: true })
   // La auditoría solo crece; el id lo asigna PostgreSQL
+  if (antes.auditoria === despues.auditoria) return
   const previos = new Set(antes.auditoria.map((a) => a.id))
   for (const a of despues.auditoria) if (!previos.has(a.id)) await insertar(c, 'auditoria', filaAuditoria(a))
 }

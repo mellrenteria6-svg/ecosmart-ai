@@ -1,0 +1,21 @@
+{
+  "fecha": "2026-11-23T03:26:13.710Z",
+  "destino": "http://localhost:3101/api/estado",
+  "usuariosDistintos": 100,
+  "solicitudes": 1000,
+  "concurrencia": 100,
+  "exitosas": 1000,
+  "errores": 0,
+  "tasaErrorPct": 0,
+  "p50Ms": 139.3,
+  "p95Ms": 239.5,
+  "p99Ms": 247.2,
+  "maxMs": 253.8,
+  "solicitudesPorSegundo": 646.8,
+  "kbPromedioRespuesta": 117.4,
+  "primerosErrores": [],
+  "criterios": {
+    "p95MaxMs": 2000,
+    "tasaErrorMaxPct": 1
+  }
+}

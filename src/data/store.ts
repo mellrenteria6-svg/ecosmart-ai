@@ -82,7 +82,10 @@ export async function refrescarDesdeServidor() {
 
 /** Uso exclusivo del servidor: carga la base leída de PostgreSQL y la devuelve tras la acción. */
 export const motorServidor = {
-  cargar(db: Db) {
+  /** Con "congelar", los registros en memoria quedan de solo lectura y cada acción intenta primero sin copiarlos. */
+  cargar(db: Db, opciones: { congelar?: boolean } = {}) {
+    filasCongeladas = !!opciones.congelar
+    if (filasCongeladas) congelarTablas(db, Object.keys(db))
     snapshot = { ...snapshot, db }
   },
   db: () => snapshot.db,
@@ -188,16 +191,110 @@ export function useStore(): Snapshot {
   return useSyncExternalStore(suscribir, obtenerSnapshot)
 }
 
+/**
+ * Copia profunda de datos planos (objetos, listas, números y textos: lo único que guarda la base).
+ * Cada registro se copia con {...registro}, que V8 resuelve de una vez para objetos de la misma
+ * forma, y solo se recorre lo anidado. Con 20 000 reciclajes tarda ~2 ms; structuredClone, ~100 (RNF09).
+ */
+function copiar<T>(v: T): T {
+  if (typeof v !== 'object' || v === null) return v
+  if (Array.isArray(v)) {
+    const n = v.length
+    const copia = new Array(n)
+    for (let i = 0; i < n; i++) copia[i] = copiar(v[i])
+    return copia as T
+  }
+  const copia = { ...v } as Record<string, unknown>
+  for (const k in copia) {
+    const x = copia[k]
+    if (typeof x === 'object' && x !== null) copia[k] = copiar(x)
+  }
+  return copia as T
+}
+
+// En el servidor los registros en memoria están congelados (Object.freeze). Una acción se intenta
+// primero con copias superficiales de las listas: si solo agrega registros (registrar un reciclaje,
+// una notificación), no hace falta copiar 20 000 filas. Si intenta cambiar un registro existente,
+// JavaScript lo impide con un TypeError y la acción se repite desde cero con la copia completa.
+let filasCongeladas = false
+
+function congelar(v: unknown) {
+  if (typeof v !== 'object' || v === null || Object.isFrozen(v)) return
+  Object.freeze(v)
+  for (const x of Object.values(v)) congelar(x)
+}
+function congelarTablas(db: Db, claves: Iterable<string>) {
+  for (const k of claves) {
+    const valor = (db as unknown as Record<string, unknown>)[k]
+    if (Array.isArray(valor)) for (const fila of valor) congelar(fila)
+    else congelar(valor)
+  }
+}
+
+/**
+ * Borrador perezoso: cada tabla se copia solo la primera vez que la acción la usa. Las tablas
+ * que no toca siguen siendo las mismas listas, y así el servidor sabe que no debe revisarlas.
+ * Con "superficial" se copia solo la lista (los registros congelados se comparten).
+ */
+function borradorDe(db: Db, superficial = false) {
+  const copias = new Map<string, unknown>()
+  const d = {} as Db
+  for (const k of Object.keys(db)) {
+    Object.defineProperty(d, k, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        if (!copias.has(k)) {
+          const original = (db as unknown as Record<string, unknown>)[k]
+          copias.set(k, superficial ? (Array.isArray(original) ? original.slice() : original) : copiar(original))
+        }
+        return copias.get(k)
+      },
+      set(v) {
+        copias.set(k, v)
+      },
+    })
+  }
+  const confirmar = (): Db => {
+    const final = { ...db } as unknown as Record<string, unknown>
+    for (const [k, v] of copias) final[k] = v
+    // Claves nuevas que la acción haya agregado
+    for (const k of Object.keys(d)) if (!(k in db)) final[k] = (d as unknown as Record<string, unknown>)[k]
+    return final as unknown as Db
+  }
+  return { d, confirmar, tocadas: () => [...copias.keys(), ...Object.keys(d).filter((k) => !(k in db))] }
+}
+
 /** Ejecuta cambios sobre una copia; si algo falla no se confirma nada. */
 function transaccion<T>(fn: (d: Db) => T): T {
-  const borrador = structuredClone(snapshot.db)
-  const resultado = fn(borrador)
+  let resultado!: T
+  let borrador: Db | null = null
+  if (filasCongeladas) {
+    const intento = borradorDe(snapshot.db, true)
+    try {
+      resultado = fn(intento.d)
+      borrador = intento.confirmar()
+      congelarTablas(borrador, intento.tocadas())
+    } catch (e) {
+      // TypeError: quiso cambiar un registro congelado. Se descarta el intento y se repite con copia completa.
+      if (!(e instanceof TypeError)) throw e
+    }
+  }
+  if (!borrador) {
+    const completo = borradorDe(snapshot.db)
+    resultado = fn(completo.d)
+    borrador = completo.confirmar()
+    if (filasCongeladas) congelarTablas(borrador, completo.tocadas())
+  }
   // Se guarda antes de confirmar: si el almacenamiento está lleno no se pierde nada en silencio
-  try {
-    localStorage.setItem(CLAVE_DB, JSON.stringify(borrador))
-  } catch (e) {
-    if (e instanceof DOMException && /quota/i.test(e.name + e.message)) {
-      throw new ApiError('El almacenamiento del navegador está lleno (las fotos ocupan espacio). Restablece los datos de demostración desde la pantalla de ingreso.')
+  // (en el servidor no hay almacenamiento del navegador: allí guarda PostgreSQL)
+  if (!filasCongeladas) {
+    try {
+      localStorage.setItem(CLAVE_DB, JSON.stringify(borrador))
+    } catch (e) {
+      if (e instanceof DOMException && /quota/i.test(e.name + e.message)) {
+        throw new ApiError('El almacenamiento del navegador está lleno (las fotos ocupan espacio). Restablece los datos de demostración desde la pantalla de ingreso.')
+      }
     }
   }
   emitir({ db: borrador }, true)
@@ -699,17 +796,31 @@ function actualizarConfig__local(adminId: string, cambios: Partial<Configuracion
 // Reciclaje (RF08–RF11, RF30)
 // ---------------------------------------------------------------------------
 
-function distanciaHamming(a: string, b: string) {
-  if (a.length !== 16 || b.length !== 16) return 64
-  let dist = 0
-  for (let i = 0; i < 16; i += 1) {
-    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16)
-    while (x) {
-      dist += x & 1
-      x >>= 1
-    }
+// Huella convertida a dos números de 32 bits; se recuerda para no convertir miles de textos en cada registro
+const huellasNumericas = new Map<string, readonly [number, number] | null>()
+function huellaNumerica(h: string) {
+  let n = huellasNumericas.get(h)
+  if (n === undefined) {
+    const alta = /^[0-9a-f]{16}$/i.test(h) ? parseInt(h.slice(0, 8), 16) : NaN
+    n = Number.isNaN(alta) ? null : [alta, parseInt(h.slice(8), 16)]
+    if (huellasNumericas.size > 200_000) huellasNumericas.clear()
+    huellasNumericas.set(h, n)
   }
-  return dist
+  return n
+}
+
+/** Bits distintos entre dos huellas de 64 bits (16 caracteres hexadecimales). */
+function distanciaHamming(a: string, b: string) {
+  const x = huellaNumerica(a)
+  const y = huellaNumerica(b)
+  if (!x || !y) return 64
+  return bits(x[0] ^ y[0]) + bits(x[1] ^ y[1])
+}
+function bits(x: number) {
+  let n = x >>> 0
+  n = n - ((n >>> 1) & 0x55555555)
+  n = (n & 0x33333333) + ((n >>> 2) & 0x33333333)
+  return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
 }
 
 export interface DatosReciclaje {

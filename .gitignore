@@ -28,3 +28,15 @@ server/.env
 
 # Claves de las notificaciones push (se generan solas)
 server/.vapid.json
+
+# Respaldos locales de PostgreSQL (pueden contener datos privados)
+db/respaldos/
+
+# Sesiones de la prueba de carga (tokens válidos solo en la base de prueba)
+scripts/tokens-carga.json
+
+# Fotos del conjunto de prueba de la IA (RNF05: pueden tener datos personales; se guardan aparte)
+ia/evaluacion/*/
+
+# Registro del monitoreo de disponibilidad (RNF06)
+monitoreo/

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { asignacionVigente, cerrarLote, puntosAsignados, useStore } from '../data/store'
 import type { Decision } from '../data/store'
 import type { Db, Reciclaje, Usuario } from '../data/types'
-import { fotoVisible } from '../components/Visual'
+import { ImagenReciclaje } from '../components/Visual'
 import { Alerta, Campo, Encabezado, EstadoBadge, Stat, Vacio, useAccion } from '../components/ui'
 import { ETIQUETA_RECICLAJE, fmtFechaHora, fmtPct, hace } from '../lib/formato'
 import { navegar } from '../lib/router'
@@ -125,7 +125,7 @@ export function PendientesPunto({ usuario, puntoId }: { usuario: Usuario; puntoI
             {revision.map((r) => (
               <li key={r.id}>
                 <a href={`#/rec/reciclaje/${r.id}`} className="fila-reciclaje fila-boton">
-                  <img src={fotoVisible(r.foto)} alt="" className="miniatura" />
+                  <ImagenReciclaje reciclaje={r} alt="" className="miniatura" />
                   <div className="fila-info">
                     <b>
                       {r.cantidadReportada} {r.unidad} · {nombreCat(db, r.categoriaId)}
@@ -162,7 +162,7 @@ export function PendientesPunto({ usuario, puntoId }: { usuario: Usuario; puntoI
                     <label className="lote-check">
                       <input type="checkbox" checked={f.incluir} onChange={(e) => actualizar(r, { incluir: e.target.checked })} aria-label="Incluir en el lote" />
                     </label>
-                    <img src={fotoVisible(r.foto)} alt={`Foto de ${nombreCat(db, r.categoriaId)}`} className="miniatura miniatura-lg" />
+                    <ImagenReciclaje reciclaje={r} alt={`Foto de ${nombreCat(db, r.categoriaId)}`} className="miniatura miniatura-lg" />
                     <div className="lote-info">
                       <b>{nombreCat(db, r.categoriaId)}</b>
                       <small>
@@ -244,7 +244,7 @@ export function RevisionIndividual({ usuario, reciclajeId }: { usuario: Usuario;
       <Encabezado volver={volver} titulo="Revisión individual" descripcion={r.motivoRevision ?? 'Revisa la foto antes de decidir.'} />
       <div className="revision-grid">
         <figure className="revision-foto">
-          <img src={fotoVisible(r.foto)} alt="Foto del residuo enviada por el usuario" />
+          <ImagenReciclaje reciclaje={r} alt="Foto del residuo enviada por el usuario" />
           <figcaption>Foto privada · visible solo para recolector asignado y administración</figcaption>
         </figure>
         <div className="bloque">

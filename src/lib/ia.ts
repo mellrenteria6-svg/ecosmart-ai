@@ -6,9 +6,10 @@ import { useSyncExternalStore } from 'react'
 import EMBEDDINGS from './ia-embeddings.json'
 import type { CategoriaResiduo } from '../data/types'
 import { clasificarPorColor } from './imagen'
+import { VERSION_MODELO, puntuar } from './ia-puntaje'
 import type { FotoProcesada } from './imagen'
 
-export const VERSION_MODELO = 'clip-vit-b32-q8-zs-1.0'
+export { VERSION_MODELO }
 export const VERSION_RESPALDO = 'color-heuristica-0.1'
 
 export type EstadoIa =
@@ -101,7 +102,6 @@ function embeddingDe(imagen: string, limiteMs: number) {
 }
 
 const CLASES = EMBEDDINGS.clases as Record<string, number[]>
-const ESCALA = 100 // logit_scale de CLIP
 
 export async function clasificar(foto: FotoProcesada, categorias: CategoriaResiduo[]): Promise<ResultadoIa> {
   const t0 = performance.now()
@@ -111,14 +111,8 @@ export async function clasificar(foto: FotoProcesada, categorias: CategoriaResid
     precargarIa()
     // La primera vez incluye la descarga del modelo; después responde en < 1 s
     const e = await embeddingDe(foto.dataUrl, estado.fase === 'listo' ? 15000 : 180000)
-    const ids = [...conocidas.map((c) => c.id), 'ninguno']
-    const logits = ids.map((id) => ESCALA * CLASES[id].reduce((s, x, i) => s + x * e[i], 0))
-    const max = Math.max(...logits)
-    const exp = logits.map((l) => Math.exp(l - max))
-    const z = exp.reduce((s, x) => s + x, 0)
-    const probs = ids.map((id, i) => ({ categoriaId: id, confianza: exp[i] / z }))
-    const ninguno = probs.find((p) => p.categoriaId === 'ninguno')!.confianza
-    const reales = probs.filter((p) => p.categoriaId !== 'ninguno').sort((a, b) => b.confianza - a.confianza)
+    // Mismo cálculo que mide la evaluación formal (scripts/evaluar-ia.ts)
+    const { reales, ninguno } = puntuar(e, CLASES, conocidas.map((c) => c.id))
     const r2 = (n: number) => Math.round(n * 100) / 100
     return {
       categoriaId: reales[0].categoriaId,

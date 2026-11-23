@@ -235,9 +235,29 @@ export interface Sesion {
   token?: string // modo servidor: token de sesión emitido por la API
 }
 
+// Rankings calculados en el servidor (modo base de datos): el navegador recibe solo los
+// primeros puestos y su propia fila, no los movimientos de todas las cuentas (RNF02, RNF09).
+export interface FilaRankingDatos {
+  usuarioId: string
+  puntos: number
+  reciclajes: number
+  ultimo: number
+  posicion: number
+  nombrePublico: string
+}
+
+export interface RankingsPrecalculados {
+  usuarios: Record<string, FilaRankingDatos[]> // clave "periodo|institucion" (o "periodo|todas")
+  facultades: Record<string, { facultad: string; puntos: number; participantes: number }[]>
+  universidades: Record<string, { institucionId: string; puntos: number; participantes: number }[]> // clave "periodo"
+  mostrados: number
+}
+
 export interface Db {
   version: number
   config: Configuracion
+  rankings?: RankingsPrecalculados
+  resumenPublico?: { reciclajesValidados: number; ecopointsOtorgados: number }
   instituciones: Institucion[]
   usuarios: Usuario[]
   puntos: PuntoReciclaje[]

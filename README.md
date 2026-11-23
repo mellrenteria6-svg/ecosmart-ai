@@ -19,7 +19,8 @@ Proyecto de **Diseño de Sistemas / Ingeniería de Software II** (noviembre de 2
 - **Varias universidades:** DEMO, ESPOL, ECOTEC, UCSG y UEES, cada una con sus dominios de correo.
 - **Sin conexión:** los reciclajes se guardan en una cola local y se sincronizan al volver la red.
 - **Avisos push:** el usuario puede activar notificaciones del navegador; si no da permiso, los avisos siguen en la app.
-- **Privacidad:** fotos visibles solo para el recolector y la administración, borradas a los 90 días; eliminación de cuenta con anonimización.
+- **Privacidad:** fotos visibles solo para su titular, el recolector asignado y la administración, borradas a los 90 días; eliminación de cuenta con anonimización.
+- **Capacidad y seguridad:** probado con 5009 cuentas y 100 usuarios simultáneos (0 % de errores, p95 < 1 s); fotos validadas en el servidor, cabeceras de seguridad, respaldos verificables y monitoreo de disponibilidad.
 
 ## Tecnologías
 
@@ -67,10 +68,22 @@ Las pruebas de integración usan PostgreSQL en memoria (PGlite) y no tocan la ba
 src/data/       Modelo, reglas de negocio (store.ts), reportes y pruebas unitarias
 src/pages/      Pantallas por rol
 src/lib/        IA (CLIP), imágenes, enrutador y formato
-server/         API Express sobre PostgreSQL, autenticación y pruebas de integración
-db/             Esquema, datos iniciales, migraciones e instalador
+server/         API Express sobre PostgreSQL, autenticación, validación y pruebas de integración
+db/             Esquema, migraciones, instalador, respaldos y tareas programadas
+scripts/        Prueba de carga, monitoreo de disponibilidad y herramientas de la IA
+ia/evaluacion/  Conjunto de prueba de la IA (las fotos se guardan fuera de Git)
+docs/           Accesibilidad, continuidad y capacidad, y evidencias
+```
+
+### IA (RNF11)
+
+```bash
+npm run ia:evaluar      # F1 macro, recall por categoría y matriz de confusión sobre ia/evaluacion/
+npm run ia:embeddings   # regenera las descripciones de cada categoría (al cambiar de versión)
 ```
 
 Más detalles de la base de datos en [db/README.md](db/README.md).
 
 Verificación de accesibilidad WCAG 2.2 AA y responsive: [docs/accesibilidad-y-responsive.md](docs/accesibilidad-y-responsive.md).
+
+Respaldos, recuperación, disponibilidad, prueba de carga y seguridad (RNF02, RNF04, RNF06, RNF09, RNF11, RNF12): [docs/continuidad-y-capacidad.md](docs/continuidad-y-capacidad.md).

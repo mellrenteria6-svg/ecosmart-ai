@@ -5,9 +5,10 @@ import type { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import webpush from 'web-push'
 import { crearBasePrueba } from '../db/base-prueba'
+import { jpegDePrueba } from './jpeg-prueba'
 import type { AvisoPush, SuscripcionPush } from './push'
 
 let db: PGlite
@@ -45,7 +46,7 @@ async function entrar(correo: string, password = 'EcoSmart2026') {
   } else token = r.sesion.token
 }
 
-const foto = 'data:image/jpeg;base64,' + Buffer.from('foto de prueba').toString('base64')
+const foto = jpegDePrueba()
 const saldo = (db: { movimientos: { usuarioId: string; puntos: number }[] }, id: string) => db.movimientos.filter((m) => m.usuarioId === id).reduce((t, m) => t + m.puntos, 0)
 
 beforeAll(async () => {
@@ -93,6 +94,7 @@ describe('Límite de peticiones (CP-RNF04)', () => {
 
 describe('API sobre PostgreSQL', () => {
   let ana = ''
+  let fotoDeAna = ''
   let codigoCanje = ''
 
   it('responde la salud con la versión de PostgreSQL', async () => {
@@ -126,6 +128,52 @@ describe('API sobre PostgreSQL', () => {
     expect(r.resultado.reciclaje.estado).toBe('pendiente')
   })
 
+  it('CP-RNF04: rechaza fotos que no son JPEG, dañadas, enormes o con datos inválidos', async () => {
+    const intento = (cambios: Record<string, unknown>) =>
+      api('/accion/registrarReciclaje', {
+        args: [{ idempotencyKey: 'api-invalida', codigoPunto: 'ECO-BIB-01', categoriaId: 'cat-pet', categoriaIa: 'cat-pet', confianzaIa: 0.9, modeloVersion: 'clip', cantidad: 1, foto, fotoHash: '1234567890abcdef', ...cambios }],
+      })
+    const png = await intento({ foto: 'data:image/png;base64,' + Buffer.from('x'.repeat(300)).toString('base64') })
+    expect([png.status, png.error]).toEqual([400, 'La foto debe ser una imagen JPEG.'])
+    const disfrazada = await intento({ foto: 'data:image/jpeg;base64,' + Buffer.from('esto no es una imagen '.repeat(20)).toString('base64') })
+    expect([disfrazada.status, disfrazada.error]).toEqual([400, 'La foto está dañada o no es una imagen válida.'])
+    expect((await intento({ foto: 'data:image/jpeg;base64,@@no-es-base64@@' })).status).toBe(400)
+    const enorme = await intento({ foto: jpegDePrueba(64, 48, 700_000) })
+    expect([enorme.status, enorme.error]).toEqual([413, 'La imagen supera el tamaño permitido.'])
+    expect((await intento({ foto: jpegDePrueba(9000, 100) })).error).toMatch(/píxeles/)
+    expect((await intento({ fotoHash: 'no-hex' })).error).toBe('Dato inválido: huella de la foto.')
+    expect((await intento({ cantidad: 'muchas' })).error).toBe('Dato inválido: cantidad.')
+    const guardados = await db.query("SELECT 1 FROM reciclaje WHERE idempotency_key = 'api-invalida'")
+    expect(guardados.rows).toHaveLength(0)
+  })
+
+  it('CP-RN05: la fecha del registro la pone el servidor, no el navegador', async () => {
+    const antes = Date.now()
+    const r = await api('/accion/registrarReciclaje', {
+      args: [{ idempotencyKey: 'api-fecha', codigoPunto: 'ECO-BIB-01', categoriaId: 'cat-pet', categoriaIa: 'cat-pet', confianzaIa: 0.9, modeloVersion: 'clip', cantidad: 1, foto, fotoHash: 'abcdef0123456789', creadoEn: antes - 3 * 86_400_000 }],
+    })
+    expect(r.resultado.reciclaje.creadoEn).toBeGreaterThanOrEqual(antes)
+  })
+
+  it('CP-RNF04: JSON mal formado responde 400 sin escribir la contraseña en el registro', async () => {
+    const espias = [vi.spyOn(console, 'error').mockImplementation(() => {}), vi.spyOn(console, 'warn').mockImplementation(() => {}), vi.spyOn(console, 'log').mockImplementation(() => {})]
+    const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"correo":"ana.torres@espol.edu.ec","password":"ClaveSecreta-99"' })
+    const escrito = espias.flatMap((e) => e.mock.calls.flat().map(String)).join(' ')
+    espias.forEach((e) => e.mockRestore())
+    expect(r.status).toBe(400)
+    expect(escrito).not.toContain('ClaveSecreta-99')
+  })
+
+  it('CP-RNF04: las respuestas llevan cabeceras de seguridad y la API no se guarda en caché', async () => {
+    const r = await fetch(base + '/salud')
+    expect(r.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(r.headers.get('x-frame-options')).toBe('DENY')
+    expect(r.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(r.headers.get('cache-control')).toBe('no-store')
+    expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(r.headers.get('x-powered-by')).toBeNull()
+  })
+
   it('CP-RF23: el usuario suscribe su dispositivo para recibir avisos push', async () => {
     expect((await api('/push/clave')).clave).toMatch(/^[A-Za-z0-9_-]{80,}$/)
     expect((await api('/push/suscribir', { suscripcion: { endpoint: 'http://inseguro', keys: {} } })).status).toBe(400)
@@ -142,7 +190,10 @@ describe('API sobre PostgreSQL', () => {
   it('CP-RF14: el recolector valida y los puntos llegan al saldo', async () => {
     await entrar('recolector@universidad.edu.ec')
     const pendiente = (await api('/estado')).db.reciclajes.find((x: { idempotencyKey: string }) => x.idempotencyKey === 'api-1')
-    expect(pendiente.foto).toBe(foto)
+    // RNF02/RNF05: la foto no viaja en los datos de la página; se pide aparte con permiso
+    expect(pendiente.foto).toBe('remota')
+    expect((await api('/foto/' + pendiente.id)).foto).toBe(foto)
+    fotoDeAna = pendiente.id
     const r = await api('/accion/cerrarLote', { args: ['x', 'p-biblioteca', [{ reciclajeId: pendiente.id, accion: 'validar' }]] })
     expect(r.resultado.validados).toBe(1)
   })
@@ -156,6 +207,48 @@ describe('API sobre PostgreSQL', () => {
     expect(enviados.some((e) => e.endpoint.includes('recolector'))).toBe(false) // nadie más recibe el aviso de Ana
     const caducada = await db.query(`SELECT 1 FROM suscripcion_push WHERE endpoint = '${CADUCADA}'`)
     expect(caducada.rows).toHaveLength(0)
+  })
+
+  it('CP-RNF05: solo el titular, el recolector asignado y la administración ven la foto', async () => {
+    await entrar('estudiante@universidad.edu.ec')
+    expect((await api('/foto/' + fotoDeAna)).status).toBe(403)
+    await entrar('admin@universidad.edu.ec')
+    expect((await api('/foto/' + fotoDeAna)).foto).toBe(foto)
+    token = null
+    expect((await api('/foto/' + fotoDeAna)).status).toBe(401)
+  })
+
+  it('CP-RNF02: la página del estudiante trae el ranking ya calculado, no el libro de todos', async () => {
+    await entrar('estudiante@universidad.edu.ec')
+    const e = await api('/estado')
+    expect(e.db.rankings.mostrados).toBe(50)
+    // Solo los alcances que ofrece la pantalla: su universidad y "todas", en los 3 periodos
+    const suya = e.db.usuarios.find((u: { correo: string }) => u.correo === 'estudiante@universidad.edu.ec').institucionId
+    expect(Object.keys(e.db.rankings.usuarios).sort()).toEqual(['semana', 'mes', 'siempre'].flatMap((p) => [`${p}|${suya}`, `${p}|todas`]).sort())
+    expect(e.db.movimientos.every((m: { usuarioId: string }) => m.usuarioId === e.db.usuarios.find((u: { correo: string }) => u.correo === 'estudiante@universidad.edu.ec').id)).toBe(true)
+    expect(e.db.resumenPublico.reciclajesValidados).toBeGreaterThan(0)
+  })
+
+  it('CP-RNF09: acciones simultáneas se guardan juntas sin mezclarse ni duplicarse', async () => {
+    await entrar('estudiante@universidad.edu.ec')
+    const datos = (clave: string, fotoHash: string, cantidad = 2) => ({
+      args: [{ idempotencyKey: clave, codigoPunto: 'ECO-BIB-01', categoriaId: 'cat-pet', categoriaIa: 'cat-pet', confianzaIa: 0.9, modeloVersion: 'clip', cantidad, foto, fotoHash }],
+    })
+    const respuestas = await Promise.all([
+      api('/accion/registrarReciclaje', datos('lote-1', '0000000000000000')),
+      api('/accion/registrarReciclaje', datos('lote-2', 'ffffffffffffffff')),
+      api('/accion/registrarReciclaje', datos('lote-x', '00000000ffffffff', 99999)), // fuera de rango: se rechaza sola
+      api('/accion/registrarReciclaje', datos('lote-3', 'ffffffff00000000')),
+      api('/accion/registrarReciclaje', datos('lote-1', '0000000000000000')), // la misma petición repetida (RNF03)
+    ])
+    expect(respuestas.map((r) => r.status)).toEqual([200, 200, 400, 200, 200])
+    expect(respuestas[2].error).toMatch(/cantidad/i)
+    const ids = [0, 1, 3].map((i) => respuestas[i].resultado.reciclaje.id)
+    expect(new Set(ids).size).toBe(3)
+    expect(respuestas[4].resultado.repetido).toBe(true)
+    expect(respuestas[4].resultado.reciclaje.id).toBe(ids[0])
+    const guardados = await db.query("SELECT idempotency_key FROM reciclaje WHERE idempotency_key LIKE 'lote-%' ORDER BY idempotency_key")
+    expect(guardados.rows.map((r) => (r as { idempotency_key: string }).idempotency_key)).toEqual(['lote-1', 'lote-2', 'lote-3'])
   })
 
   it('CP-RNF13: el administrador entra con segundo factor y entrega el canje una sola vez', async () => {

@@ -14,7 +14,7 @@ import {
 } from '../data/store'
 import type { Recompensa, Usuario } from '../data/types'
 import { Alerta, Campo, Encabezado, EntradaContrasena, EstadoBadge, Modal, Puntos, Vacio, useAccion } from '../components/ui'
-import { ChipCategoria, MapaCampus, Qr, fotoVisible } from '../components/Visual'
+import { ChipCategoria, MapaCampus, Qr, ImagenReciclaje } from '../components/Visual'
 import { ColaOffline } from './Reciclar'
 import { Insignias } from './Comunidad'
 import { AvisosPush } from '../components/AvisosPush'
@@ -112,7 +112,7 @@ export function InicioUsuario({ usuario }: { usuario: Usuario }) {
               const punto = db.puntos.find((p) => p.id === r.puntoId)
               return (
                 <li key={r.id} className="fila-reciclaje">
-                  <img src={fotoVisible(r.foto)} alt="" className="miniatura" />
+                  <ImagenReciclaje reciclaje={r} alt="" className="miniatura" />
                   <div className="fila-info">
                     <b>
                       {r.cantidadFinal ?? r.cantidadReportada} {r.unidad} · {cat.nombre}
@@ -240,7 +240,7 @@ export function Historial({ usuario }: { usuario: Usuario }) {
               return (
                 <li key={x.id}>
                   <button type="button" className="fila-reciclaje fila-boton" onClick={() => setDetalle(x.id)}>
-                    <img src={fotoVisible(x.foto)} alt="" className="miniatura" />
+                    <ImagenReciclaje reciclaje={x} alt="" className="miniatura" />
                     <div className="fila-info">
                       <b>
                         {x.cantidadFinal ?? x.cantidadReportada} {x.unidad} · {cat.nombre}
@@ -298,7 +298,7 @@ export function Historial({ usuario }: { usuario: Usuario }) {
       <Modal abierto={!!r} titulo="Detalle del reciclaje" onCerrar={() => setDetalle(null)}>
         {r && (
           <div className="detalle-reciclaje">
-            <img src={fotoVisible(r.foto)} alt="Foto del residuo registrado" className="detalle-foto" />
+            <ImagenReciclaje reciclaje={r} alt="Foto del residuo registrado" className="detalle-foto" />
             <dl className="dl">
               <dt>Estado</dt>
               <dd>

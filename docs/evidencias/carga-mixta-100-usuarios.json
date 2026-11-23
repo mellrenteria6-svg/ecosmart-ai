@@ -1,0 +1,49 @@
+{
+  "fecha": "2026-11-23T03:26:52.379Z",
+  "destino": "http://localhost:3101/api/estado",
+  "usuariosDistintos": 100,
+  "solicitudes": 1000,
+  "concurrencia": 100,
+  "exitosas": 1000,
+  "errores": 0,
+  "tasaErrorPct": 0,
+  "p50Ms": 72.2,
+  "p95Ms": 977.2,
+  "p99Ms": 1248.4,
+  "maxMs": 1533.7,
+  "solicitudesPorSegundo": 486.8,
+  "kbPromedioRespuesta": 117,
+  "primerosErrores": [],
+  "lectura": {
+    "solicitudes": 900,
+    "p50Ms": 66.2,
+    "p95Ms": 282.7
+  },
+  "escritura": {
+    "solicitudes": 100,
+    "p50Ms": 977.2,
+    "p95Ms": 1497
+  },
+  "servidorEscrituras": {
+    "auth": {
+      "p50Ms": 13.5,
+      "p95Ms": 52.8
+    },
+    "cola": {
+      "p50Ms": 250.4,
+      "p95Ms": 713.3
+    },
+    "base": {
+      "p50Ms": 610.2,
+      "p95Ms": 791.4
+    },
+    "vista": {
+      "p50Ms": 0.1,
+      "p95Ms": 0.3
+    }
+  },
+  "criterios": {
+    "p95MaxMs": 2000,
+    "tasaErrorMaxPct": 1
+  }
+}

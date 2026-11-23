@@ -1,0 +1,23 @@
+{
+  "fecha": "2026-11-23T02:55:57.956Z",
+  "destino": "http://localhost:3101/api/estado",
+  "usuariosDistintos": 100,
+  "solicitudes": 200,
+  "concurrencia": 100,
+  "exitosas": 13,
+  "errores": 187,
+  "tasaErrorPct": 93.5,
+  "p50Ms": 10008.5,
+  "p95Ms": 10038,
+  "p99Ms": 10039.6,
+  "maxMs": 10040,
+  "solicitudesPorSegundo": 9.9,
+  "kbPromedioRespuesta": 5182.8,
+  "primerosErrores": [
+    "The operation was aborted due to timeout"
+  ],
+  "criterios": {
+    "p95MaxMs": 2000,
+    "tasaErrorMaxPct": 1
+  }
+}

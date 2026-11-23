@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import type { ImgHTMLAttributes } from 'react'
+import { obtenerSnapshot } from '../data/store'
 import QRCode from 'qrcode'
 import type { PuntoReciclaje } from '../data/types'
 
@@ -72,3 +74,40 @@ const FOTO_ELIMINADA =
 
 /** Las fotos se borran por retención o al eliminar la cuenta (RNF05). */
 export const fotoVisible = (foto: string) => foto || FOTO_ELIMINADA
+
+const FOTO_CARGANDO =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#ebe3d4"/><text x="160" y="126" font-family="sans-serif" font-size="15" fill="#626155" text-anchor="middle">Cargando foto…</text></svg>')
+
+// Modo base de datos: las fotos llegan marcadas como "remota" y se piden una por una (RNF02, RNF05)
+const fotosPedidas = new Map<string, Promise<string>>()
+function pedirFoto(id: string) {
+  let p = fotosPedidas.get(id)
+  if (!p) {
+    const token = obtenerSnapshot().sesion?.token
+    p = fetch(`/api/foto/${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : { foto: '' }))
+      .then((d: { foto?: string }) => d.foto || '')
+      .catch(() => '')
+    fotosPedidas.set(id, p)
+    // Si falló, se puede volver a intentar más tarde
+    void p.then((f) => f || fotosPedidas.delete(id))
+  }
+  return p
+}
+
+/** Foto de un reciclaje: local, borrada por privacidad o pedida al servidor solo cuando se muestra. */
+export function ImagenReciclaje({ reciclaje, ...img }: { reciclaje: { id: string; foto: string } } & ImgHTMLAttributes<HTMLImageElement>) {
+  const remota = reciclaje.foto === 'remota'
+  const [cargada, setCargada] = useState<{ id: string; src: string } | null>(null)
+  useEffect(() => {
+    if (!remota) return
+    let vivo = true
+    void pedirFoto(reciclaje.id).then((f) => vivo && setCargada({ id: reciclaje.id, src: fotoVisible(f) }))
+    return () => {
+      vivo = false
+    }
+  }, [remota, reciclaje.id])
+  const src = !remota ? fotoVisible(reciclaje.foto) : cargada?.id === reciclaje.id ? cargada.src : FOTO_CARGANDO
+  return <img {...img} src={src} />
+}

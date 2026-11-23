@@ -331,3 +331,36 @@ describe('Reportes (RF24, RF27)', () => {
     expect(db().usuarios.find((u) => u.id === DIEGO)?.institucionId).toBe('inst-demo')
   })
 })
+
+describe('Transacciones del servidor con registros congelados (RNF09)', () => {
+  beforeEach(() => {
+    motorServidor.cargar(crearDbSemilla(), { congelar: true })
+  })
+
+  it('CP-RNF09: registrar un reciclaje no copia las filas existentes y deja el nuevo de solo lectura', async () => {
+    const antes = db()
+    const total = antes.reciclajes.length
+    const { reciclaje } = await registrarReciclaje(datos())
+    expect(db().reciclajes).toHaveLength(total + 1)
+    expect(antes.reciclajes).toHaveLength(total) // el estado anterior no cambió
+    expect(db().reciclajes[0]).toBe(antes.reciclajes[0]) // misma fila, sin copiar
+    expect(db().movimientos).toBe(antes.movimientos) // tabla que la acción no tocó
+    expect(Object.isFrozen(db().reciclajes.find((r) => r.id === reciclaje.id))).toBe(true)
+  })
+
+  it('CP-RNF09: una acción que cambia registros existentes se repite con copia completa', async () => {
+    const antes = db()
+    const original = antes.reciclajes.find((r) => r.id === 'r-004')!
+    const lote = await cerrarLote(RECOLECTOR, 'p-biblioteca', [{ reciclajeId: 'r-004', accion: 'validar' }])
+    expect(lote.validados).toBe(1)
+    expect(db().reciclajes.find((r) => r.id === 'r-004')?.estado).toBe('validado')
+    expect(original.estado).toBe('pendiente') // la fila de antes sigue intacta
+    expect(Object.isFrozen(db().reciclajes.find((r) => r.id === 'r-004'))).toBe(true)
+  })
+
+  it('CP-RNF09: una regla que rechaza la acción no deja cambios a medias', async () => {
+    const antes = db()
+    await expect(cerrarLote(RECOLECTOR, 'p-biblioteca', [{ reciclajeId: 'r-004', accion: 'rechazar' }])).rejects.toThrow(/motivo/)
+    expect(db()).toBe(antes)
+  })
+})
