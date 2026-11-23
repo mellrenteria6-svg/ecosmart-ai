@@ -2,6 +2,7 @@
 // Contraseñas con bcrypt (pgcrypto), sesiones con token aleatorio guardado como hash.
 import { createHash, randomBytes, randomInt } from 'node:crypto'
 import type { PoolClient } from 'pg'
+import { avisarCartero } from './correo'
 import { pool } from './db'
 
 export class ErrorHttp extends Error {
@@ -31,6 +32,7 @@ async function enTransaccion<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
     await c.query('BEGIN')
     const r = await fn(c)
     await c.query('COMMIT')
+    avisarCartero() // si la operación dejó correos (verificación, código, recuperación), salen ya
     return r
   } catch (e) {
     await c.query('ROLLBACK')

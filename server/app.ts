@@ -19,6 +19,7 @@ import * as auth from './auth'
 import * as push from './push'
 import { ErrorHttp } from './auth'
 import { datosReciclaje } from './validacion'
+import { avisarCartero, correoActivo } from './correo'
 
 const BANDEJA_DEMO = process.env.BANDEJA_DEMO !== '0' // bandeja de correo simulada (solo para demostración)
 
@@ -218,6 +219,7 @@ async function ejecutarLote(lote: Trabajo[]) {
     recordar(despues)
     // RF23: las notificaciones nuevas salen también como push (sin hacer esperar la respuesta)
     push.enviarNuevasEnSegundoPlano(antes, despues)
+    if (despues.correos.length > antes.correos.length) avisarCartero()
     const fin = performance.now()
     lote.forEach((t, i) => {
       if (t.tiempos) t.tiempos.base = fin - inicio
@@ -275,7 +277,7 @@ const api = express.Router()
 
 api.get('/salud', async (_req, res) => {
   const { rows } = await pool.query('SELECT version() AS v')
-  res.json({ ok: true, postgres: String(rows[0].v).split(',')[0] })
+  res.json({ ok: true, postgres: String(rows[0].v).split(',')[0], correoReal: correoActivo() })
 })
 
 // Datos de la página: lectura sin bloqueo desde la copia en memoria

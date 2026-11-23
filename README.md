@@ -49,7 +49,16 @@ npm run servidor:dev                                           # API en http://l
 npm run dev:bd                                                 # página en http://localhost:5173
 ```
 
-En Windows, si PowerShell bloquea `npm`, usa `npm.cmd`.
+En Windows, si PowerShell bloquea `npm`, usa `npm.cmd`. También puedes dar doble clic a **`Iniciar EcoSmart.cmd`**: prende el servidor y la página y abre el navegador.
+
+**Correos reales** (verificación, código de acceso y recuperación de contraseña): sin configurar, llegan a la bandeja simulada. Para enviarlos de verdad desde una cuenta de Gmail (con verificación en 2 pasos y una [contraseña de aplicación](https://myaccount.google.com/apppasswords)):
+
+```bash
+powershell -ExecutionPolicy Bypass -File server\configurar-correo.ps1
+npm run db:migrar
+```
+
+`/api/salud` muestra `"correoReal": true` cuando está activo. Las cuentas de demostración (`@universidad.edu.ec`) siguen solo en la bandeja simulada; cada correo guarda si salió, los intentos y el último error.
 
 Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec`, `admin@universidad.edu.ec` y `aliado@universidad.edu.ec`. El administrador y el aliado usan segundo factor: el código aparece en la *Bandeja de correo simulada* (`/#/correo`).
 

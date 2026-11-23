@@ -54,7 +54,7 @@ beforeAll(async () => {
   const puerto = 46000 + Math.floor(Math.random() * 1000)
   socket = new PGLiteSocketServer({ db, port: puerto, host: '127.0.0.1' })
   await socket.start()
-  Object.assign(process.env, { PGHOST: '127.0.0.1', PGPORT: String(puerto), PGUSER: 'postgres', PGPASSWORD: 'prueba', PGDATABASE: 'postgres', PG_POOL_MAX: '1', BANDEJA_DEMO: '1', LIMITE_AUTH: '1000' })
+  Object.assign(process.env, { PGHOST: '127.0.0.1', PGPORT: String(puerto), PGUSER: 'postgres', PGPASSWORD: 'prueba', PGDATABASE: 'postgres', PG_POOL_MAX: '1', BANDEJA_DEMO: '1', LIMITE_AUTH: '1000', CORREO_INTERVALO_MS: '0', URL_PUBLICA: 'https://ecosmart.test/' })
   const vapid = webpush.generateVAPIDKeys()
   Object.assign(process.env, { VAPID_PUBLICA: vapid.publicKey, VAPID_PRIVADA: vapid.privateKey })
   const { app, pool } = await import('./app')
@@ -299,5 +299,69 @@ describe('API sobre PostgreSQL', () => {
     expect((await api('/estado')).status).toBe(200)
     await api('/auth/logout', {})
     expect((await api('/estado')).status).toBe(401)
+  })
+})
+
+describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
+  type Enviado = { to: string; subject: string; text: string; html: string }
+  const buzon: Enviado[] = []
+  let fallar = 0
+  const transporteFalso = {
+    async sendMail(m: Enviado) {
+      if (fallar > 0) {
+        fallar -= 1
+        throw new Error('Servidor de correo no disponible')
+      }
+      buzon.push(m)
+    },
+  }
+  let correo: typeof import('./correo')
+  const fila = async (para: string) => (await db.query(`SELECT enviado_en, intentos, error FROM correo_simulado WHERE para = '${para}' ORDER BY creado_en DESC LIMIT 1`)).rows[0] as { enviado_en: Date | null; intentos: number; error: string | null }
+
+  beforeAll(async () => {
+    correo = await import('./correo')
+    correo.usarTransporte(transporteFalso)
+  })
+  afterAll(() => correo.usarTransporte(null))
+
+  it('CP-RF01: el correo de verificación llega con el enlace completo y funciona', async () => {
+    token = null
+    expect((await api('/auth/registro', { nombre: 'Luis Mora', correo: 'luis.mora@espol.edu.ec', facultad: 'Ingeniería', password: 'Clave2026x', consentimiento: true })).status).toBe(200)
+    await correo.repartir()
+    const m = buzon.find((x) => x.to === 'luis.mora@espol.edu.ec')!
+    expect(m.subject).toBe('Verifica tu cuenta de EcoSmart AI')
+    const enlace = m.text.match(/https:\/\/ecosmart\.test\/#\/verificar\?token=([\w-]+)/)!
+    expect(enlace).not.toBeNull()
+    expect(m.html).toContain('Abrir EcoSmart AI')
+    expect((await fila('luis.mora@espol.edu.ec')).enviado_en).not.toBeNull()
+    expect((await api('/auth/verificar', { token: enlace[1] })).usuario.nombre).toBe('Luis Mora')
+  })
+
+  it('CP-RNF13: si el servidor de correo falla, se reintenta y el código llega', async () => {
+    fallar = 1
+    const antes = buzon.length
+    await api('/auth/recuperar', { correo: 'luis.mora@espol.edu.ec' })
+    await correo.repartir()
+    expect(buzon.length).toBe(antes)
+    expect(await fila('luis.mora@espol.edu.ec')).toMatchObject({ enviado_en: null, intentos: 1, error: 'Servidor de correo no disponible' })
+    await correo.repartir()
+    expect(buzon.at(-1)?.subject).toBe('Restablece tu contraseña')
+    expect(await fila('luis.mora@espol.edu.ec')).toMatchObject({ intentos: 2, error: null })
+  })
+
+  it('no envía a las cuentas de demostración ni correos de hace más de una hora', async () => {
+    const antes = buzon.length
+    await api('/auth/recuperar', { correo: 'estudiante@universidad.edu.ec' })
+    await db.query("INSERT INTO correo_simulado (para, asunto, cuerpo, creado_en) VALUES ('viejo@espol.edu.ec', 'Código viejo', 'x', now() - interval '2 hours')")
+    await correo.repartir()
+    expect(buzon.length).toBe(antes)
+    expect((await fila('estudiante@universidad.edu.ec')).error).toMatch(/demostración/)
+    expect((await fila('viejo@espol.edu.ec')).enviado_en).toBeNull()
+  })
+
+  it('escapa el texto en la versión HTML del correo', () => {
+    const m = correo.armarCorreo({ para: 'a@espol.edu.ec', asunto: 'x', cuerpo: '<script>alert(1)</script>', enlace: null })
+    expect(m.html).not.toContain('<script>')
+    expect(m.html).toContain('&lt;script&gt;')
   })
 })
