@@ -15,7 +15,7 @@ import {
 } from '../data/store'
 import { DEMO_CUENTAS, DEMO_PASSWORD } from '../data/seed'
 import { Marca } from '../components/Shell'
-import { Alerta, Campo, useAccion } from '../components/ui'
+import { Alerta, Campo, EntradaContrasena, useAccion } from '../components/ui'
 import { hace } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
 
@@ -102,7 +102,7 @@ export function Ingresar() {
           {(id) => <input id={id} className="input" type="email" autoComplete="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required />}
         </Campo>
         <Campo etiqueta="Contraseña">
-          {(id) => <input id={id} className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
+          {(id) => <EntradaContrasena id={id} className="input" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
         </Campo>
         <div className="form-fila-fin">
           <a href="#/recuperar">¿Olvidaste tu contraseña?</a>
@@ -206,7 +206,7 @@ export function Registro() {
           )}
         </Campo>
         <Campo etiqueta="Contraseña" ayuda="Mínimo 8 caracteres, con letras y números.">
-          {(id, d) => <input id={id} aria-describedby={d} className="input" type="password" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required />}
+          {(id, d) => <EntradaContrasena id={id} aria-describedby={d} className="input" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required />}
         </Campo>
         <label className="check">
           <input type="checkbox" checked={f.consentimiento} onChange={(e) => setF({ ...f, consentimiento: e.target.checked })} />
@@ -307,10 +307,10 @@ export function Restablecer() {
         >
           {error && <Alerta tono="error">{error}</Alerta>}
           <Campo etiqueta="Nueva contraseña" ayuda="Mínimo 8 caracteres, con letras y números.">
-            {(id, d) => <input id={id} aria-describedby={d} className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
+            {(id, d) => <EntradaContrasena id={id} aria-describedby={d} className="input" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
           </Campo>
           <Campo etiqueta="Confirmar contraseña">
-            {(id) => <input id={id} className="input" type="password" autoComplete="new-password" value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} required />}
+            {(id) => <EntradaContrasena id={id} className="input" autoComplete="new-password" value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} required />}
           </Campo>
           <button className="btn btn-tinta btn-bloque" disabled={cargando}>Guardar contraseña</button>
         </form>

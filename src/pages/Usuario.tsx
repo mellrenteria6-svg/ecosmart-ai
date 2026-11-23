@@ -13,7 +13,7 @@ import {
   eliminarMiCuenta,
 } from '../data/store'
 import type { Recompensa, Usuario } from '../data/types'
-import { Alerta, Campo, Encabezado, EstadoBadge, Modal, Puntos, Vacio, useAccion } from '../components/ui'
+import { Alerta, Campo, Encabezado, EntradaContrasena, EstadoBadge, Modal, Puntos, Vacio, useAccion } from '../components/ui'
 import { ChipCategoria, MapaCampus, Qr, fotoVisible } from '../components/Visual'
 import { ColaOffline } from './Reciclar'
 import { Insignias } from './Comunidad'
@@ -642,7 +642,7 @@ function EliminarCuenta({ usuario }: { usuario: Usuario }) {
             <li>El historial de reciclajes y canjes se conserva <b>sin identificarte</b>, porque la auditoría no se puede borrar.</li>
           </ul>
           <Campo etiqueta="Confirma con tu contraseña">
-            {(id) => <input id={id} className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
+            {(id) => <EntradaContrasena id={id} className="input" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
           </Campo>
           <label className="check">
             <input type="checkbox" checked={entiendo} onChange={(e) => setEntiendo(e.target.checked)} />

@@ -1363,6 +1363,45 @@ textarea.input {
   outline: 3px solid var(--accent);
   outline-offset: 1px;
 }
+.entrada-contrasena {
+  position: relative;
+}
+.entrada-contrasena .input {
+  padding-right: 52px;
+}
+.entrada-contrasena-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.entrada-contrasena-toggle:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+.entrada-contrasena-toggle:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -2px;
+}
+.entrada-contrasena-toggle svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .input-sm {
   min-height: 36px;
   padding: 6px 10px;

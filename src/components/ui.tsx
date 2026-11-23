@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { InputHTMLAttributes, ReactNode } from 'react'
 import { TONO_ESTADO } from '../lib/formato'
 import type { Tono } from '../lib/formato'
 
@@ -75,6 +75,40 @@ export function Campo({ etiqueta, ayuda, children }: CampoProps) {
           {ayuda}
         </small>
       )}
+    </div>
+  )
+}
+
+type EntradaContrasenaProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
+
+/** Campo de contraseña con botón para verla u ocultarla (el estado se anuncia con aria-pressed). */
+export function EntradaContrasena(props: EntradaContrasenaProps) {
+  const [visible, setVisible] = useState(false)
+  const controlId = typeof props.id === 'string' ? props.id : undefined
+
+  return (
+    <div className="entrada-contrasena">
+      <input {...props} type={visible ? 'text' : 'password'} />
+      <button
+        type="button"
+        className="entrada-contrasena-toggle"
+        aria-label="Mostrar contraseña"
+        aria-controls={controlId}
+        aria-pressed={visible}
+        title={visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        onClick={() => setVisible((valor) => !valor)}
+      >
+        {visible ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5.5 9 8a11.7 11.7 0 01-2.2 3.6M6.6 6.6C4.3 8 3 10.3 3 12c0 2.5 3.5 8 9 8a10.6 10.6 0 004.1-.8" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12c0-2.5 3.5-8 9-8s9 5.5 9 8-3.5 8-9 8-9-5.5-9-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </button>
     </div>
   )
 }
