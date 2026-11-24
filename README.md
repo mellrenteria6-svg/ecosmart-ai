@@ -60,7 +60,15 @@ npm run db:migrar
 
 `/api/salud` muestra `"correoReal": true` cuando está activo, y la página deja de mostrar la bandeja simulada. Las cuentas de demostración (`@universidad.edu.ec`) no tienen buzón propio: sus correos llegan al buzón del proyecto (el remitente, o `CORREO_DEMO_DESTINO`) con el asunto `[Demo: cuenta]`. Cada correo guarda si salió, los intentos y el último error.
 
-Cuentas de demostración (contraseña `EcoSmart2026`): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec`, `admin@universidad.edu.ec` y `aliado@universidad.edu.ec`. El administrador y el aliado usan segundo factor (RNF13) **solo la primera vez en cada equipo**: después ese navegador queda recordado 30 días; cambiar la contraseña, el rol o bloquear la cuenta lo olvida. Cambiar la contraseña pide un código de 6 dígitos enviado al correo. Sin correo real, los códigos aparecen en la *Bandeja de correo simulada* (`/#/correo`).
+**Administrador principal** (modo base de datos): crea tu cuenta con una contraseña al azar que se guarda en `%USERPROFILE%\EcoSmart-privadodministrador.txt`, fuera del proyecto y de OneDrive, legible solo por tu usuario de Windows:
+
+```bash
+node --env-file=server/.env scripts/crear-admin.mjs
+```
+
+Desde el panel de administración (*Usuarios*) cambias el rol de cualquier persona. La pantalla de ingreso ya no muestra las cuentas de demostración en este modo.
+
+Cuentas de demostración (contraseña `EcoSmart2026`; en la pantalla de ingreso solo aparecen en el modo sin servidor): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec`, `admin@universidad.edu.ec` y `aliado@universidad.edu.ec`. El administrador y el aliado usan segundo factor (RNF13) **solo la primera vez en cada equipo**: después ese navegador queda recordado 30 días; cambiar la contraseña, el rol o bloquear la cuenta lo olvida. Cambiar la contraseña pide un código de 6 dígitos enviado al correo. Sin correo real, los códigos aparecen en la *Bandeja de correo simulada* (`/#/correo`).
 
 ## Pruebas
 

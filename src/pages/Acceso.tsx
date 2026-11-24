@@ -127,7 +127,8 @@ export function Ingresar() {
           ¿No tienes cuenta? <a href="#/registro">Regístrate</a>
         </p>
       </form>
-      <div className="demo-cuentas">
+      {/* Las cuentas de demostración solo se muestran en el modo sin servidor (datos en el navegador) */}
+      {!MODO_SERVIDOR && <div className="demo-cuentas">
         <p>
           <b>Cuentas de demostración</b> · contraseña <code>{DEMO_PASSWORD}</code>
         </p>
@@ -147,7 +148,7 @@ export function Ingresar() {
             </button>
           ))}
         </div>
-        {!MODO_SERVIDOR && <button
+        <button
           type="button"
           className="enlace-boton"
           onClick={() => {
@@ -155,8 +156,8 @@ export function Ingresar() {
           }}
         >
           Restablecer datos de demostración
-        </button>}
-      </div>
+        </button>
+      </div>}
     </MarcoAcceso>
   )
 }
