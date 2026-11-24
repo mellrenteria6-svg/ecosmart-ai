@@ -106,6 +106,8 @@ Más detalles de la base de datos en [db/README.md](db/README.md).
 
 Verificación de accesibilidad WCAG 2.2 AA y responsive: [docs/accesibilidad-y-responsive.md](docs/accesibilidad-y-responsive.md).
 
+**Compartir la página completa desde tu laptop** (con tu base de datos real): doble clic en **`Compartir EcoSmart.cmd`** y, en VS Code, pestaña **Puertos** → *Reenviar un puerto* → `3001` → clic derecho → *Visibilidad del puerto* → **Pública**. Copia la dirección `https://…devtunnels.ms` y compártela. Funciona mientras la laptop y VS Code estén abiertos.
+
 **Demostración en internet:** <https://mellrenteria6-svg.github.io/ecosmart-ai/> — versión sin servidor (los datos quedan en el navegador de cada persona, con las cuentas de demostración). Se publica sola en GitHub Pages con cada cambio.
 
 **Publicar la versión completa** (Render + Neon, gratis): guía paso a paso en [docs/publicar.md](docs/publicar.md).
