@@ -288,6 +288,41 @@ describe('API sobre PostgreSQL', () => {
     expect((await login(v.equipo)).tipo).toBe('segundo_factor')
   })
 
+  it('CP-RF25: la administración crea cuentas internas con el dominio de su rol', async () => {
+    await entrar('admin@universidad.edu.ec')
+    expect((await api('/admin/dominios')).dominios).toEqual({ usuario: 'eco.smart.com', recolector: 'recolector.eco.smart.com', aliado: 'aliado.eco.smart.com', admin: 'administrador.eco.smart.com' })
+    const r = await api('/admin/cuentas', { nombre: 'Juan Aliado', usuario: 'juan.aliado', rol: 'aliado', institucionId: 'inst-espol', facultad: '' })
+    expect(r.correo).toBe('juan.aliado@aliado.eco.smart.com')
+    expect(r.password).toMatch(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{12}$/)
+    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'juan.aliado', rol: 'aliado' })).status).toBe(409)
+    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'con espacios', rol: 'usuario' })).status).toBe(400)
+    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'x', rol: 'superadmin' })).status).toBe(400)
+    // La cuenta entra con la contraseña inicial; su código va al correo del proyecto
+    token = null
+    const login = await api('/auth/login', { correo: r.correo, password: r.password })
+    expect(login).toMatchObject({ tipo: 'segundo_factor', alProyecto: true })
+    const fila = await db.query(`SELECT rol, verificado, institucion_id FROM usuario WHERE correo = '${r.correo}'`)
+    expect(fila.rows[0]).toEqual({ rol: 'aliado', verificado: true, institucion_id: 'inst-espol' })
+  })
+
+  it('CP-RF25: solo la administración ve y cambia los dominios; nadie se registra solo con ellos', async () => {
+    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@administrador.eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/uso interno/)
+    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/uso interno/)
+    await entrar('estudiante@universidad.edu.ec')
+    expect((await api('/admin/dominios')).status).toBe(403)
+    expect((await api('/admin/cuentas', { nombre: 'X', usuario: 'yo', rol: 'admin' })).status).toBe(403)
+    await entrar('admin@universidad.edu.ec')
+    const actuales = (await api('/admin/dominios')).dominios
+    expect((await api('/admin/dominios', undefined)).status).toBe(200)
+    const cambiar = (dominios: Record<string, string>) =>
+      fetch(base + '/admin/dominios', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ dominios }) }).then(async (x) => ({ status: x.status, ...(await x.json()) }))
+    expect((await cambiar({ ...actuales, usuario: 'no valido' })).status).toBe(400)
+    expect((await cambiar({ ...actuales, usuario: actuales.aliado })).error).toMatch(/distinto/)
+    expect((await cambiar({ ...actuales, usuario: 'espol.edu.ec' })).error).toMatch(/universidad/)
+    expect((await cambiar({ ...actuales, usuario: 'estudiantes.eco.smart.com' })).dominios.usuario).toBe('estudiantes.eco.smart.com')
+    expect((await cambiar(actuales)).status).toBe(200)
+  })
+
   it('CP-RNF13: el administrador entra con segundo factor y entrega el canje una sola vez', async () => {
     await entrar('admin@universidad.edu.ec')
     expect((await api('/accion/crearAjuste', { args: ['x', ana, 50, 'Bono'] })).status).toBe(200)
@@ -416,6 +451,17 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
     expect((await api('/auth/login', { correo: 'luis.mora@espol.edu.ec', password: 'Nueva2026x' })).tipo).toBe('ok')
   })
 
+  it('los códigos de las cuentas internas también llegan al buzón del proyecto', async () => {
+    process.env.CORREO_DEMO_DESTINO = 'proyecto@ejemplo.com'
+    try {
+      await api('/auth/recuperar', { correo: 'juan.aliado@aliado.eco.smart.com' })
+      await correo.repartir()
+      expect(buzon.at(-1)).toMatchObject({ to: 'proyecto@ejemplo.com', subject: '[juan.aliado@aliado.eco.smart.com] Código para cambiar tu contraseña' })
+    } finally {
+      delete process.env.CORREO_DEMO_DESTINO
+    }
+  })
+
   it('los correos de las cuentas de demostración llegan al buzón del proyecto', async () => {
     process.env.CORREO_DEMO_DESTINO = 'proyecto@ejemplo.com'
     try {
@@ -423,7 +469,7 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
       await correo.repartir()
       const m = buzon.at(-1)!
       expect(m.to).toBe('proyecto@ejemplo.com')
-      expect(m.subject).toBe('[Demo: recolector@universidad.edu.ec] Código para cambiar tu contraseña')
+      expect(m.subject).toBe('[recolector@universidad.edu.ec] Código para cambiar tu contraseña')
       expect((await api('/salud')).correoDemoReal).toBe(true)
       expect((await api('/correos')).correos).toEqual([]) // con todo real, la bandeja queda vacía
     } finally {

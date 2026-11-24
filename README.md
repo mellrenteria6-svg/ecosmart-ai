@@ -66,7 +66,7 @@ npm run db:migrar
 node --env-file=server/.env scripts/crear-admin.mjs
 ```
 
-Desde el panel de administración (*Usuarios*) cambias el rol de cualquier persona. La pantalla de ingreso ya no muestra las cuentas de demostración en este modo.
+Desde el panel de administración (*Usuarios*) cambias el rol de cualquier persona y, con **Crear cuenta**, creas cuentas internas con el dominio de su rol (por defecto `@eco.smart.com`, `@recolector.eco.smart.com`, `@aliado.eco.smart.com` y `@administrador.eco.smart.com`, configurables en *Dominios*). Esos correos no tienen buzón: sus códigos llegan al correo del proyecto, y nadie puede registrarse solo con ellos. La pantalla de ingreso ya no muestra las cuentas de demostración en este modo.
 
 Cuentas de demostración (contraseña `EcoSmart2026`; en la pantalla de ingreso solo aparecen en el modo sin servidor): `estudiante@universidad.edu.ec`, `recolector@universidad.edu.ec`, `admin@universidad.edu.ec` y `aliado@universidad.edu.ec`. El administrador y el aliado usan segundo factor (RNF13) **solo la primera vez en cada equipo**: después ese navegador queda recordado 30 días; cambiar la contraseña, el rol o bloquear la cuenta lo olvida. Cambiar la contraseña pide un código de 6 dígitos enviado al correo. Sin correo real, los códigos aparecen en la *Bandeja de correo simulada* (`/#/correo`).
 

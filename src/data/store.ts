@@ -598,7 +598,8 @@ export async function verificarCorreo(token: string): Promise<Usuario> {
   })
 }
 
-export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario } | { tipo: 'segundo_factor'; usuarioId: string }
+// alProyecto: la cuenta no tiene buzón propio (interna o de demostración) y su código va al correo del proyecto
+export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario } | { tipo: 'segundo_factor'; usuarioId: string; alProyecto?: boolean }
 
 // Equipos de confianza (RNF13): tras pasar el segundo factor, este navegador queda recordado
 // 30 días para esa cuenta. Con servidor se guarda el identificador que entrega el servidor; en
@@ -686,6 +687,34 @@ export async function verificarSegundoFactor(usuarioId: string, codigo: string):
   recordarEquipo(u.correo)
   emitir({ sesion: { usuarioId: u.id, sesionVersion: u.sesionVersion, creadaEn: Date.now() } })
   return u
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas internas por rol (solo con servidor): la administración las crea con el dominio
+// de cada rol, por ejemplo juan@aliado.eco.smart.com (RF25)
+// ---------------------------------------------------------------------------
+export type DominiosInternos = Record<Rol, string>
+
+function exigirServidor() {
+  if (!MODO_SERVIDOR) throw new ApiError('Las cuentas internas se crean en el modo con base de datos.')
+}
+
+export async function obtenerDominiosInternos(): Promise<DominiosInternos> {
+  exigirServidor()
+  return (await llamarApi<{ dominios: DominiosInternos }>('/admin/dominios')).dominios
+}
+
+export async function guardarDominiosInternos(dominios: DominiosInternos): Promise<DominiosInternos> {
+  exigirServidor()
+  return (await llamarApi<{ dominios: DominiosInternos }>('/admin/dominios', { dominios }, 'PUT')).dominios
+}
+
+/** Devuelve el correo creado y su contraseña inicial (se muestra una sola vez). */
+export async function crearCuentaInterna(datos: { nombre: string; usuario: string; rol: Rol; institucionId: string; facultad: string }) {
+  exigirServidor()
+  const r = await llamarApi<{ correo: string; password: string }>('/admin/cuentas', datos)
+  await refrescarDesdeServidor()
+  return r
 }
 
 export function cerrarSesion() {

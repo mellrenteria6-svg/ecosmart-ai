@@ -1,5 +1,5 @@
 // D01–D06 y entrega de canjes (Fase 1: el administrador entrega los premios).
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   INSTITUCION_INVITADOS,
@@ -9,6 +9,10 @@ import {
   cambiarBloqueo,
   cambiarRol,
   crearAjuste,
+  crearCuentaInterna,
+  guardarDominiosInternos,
+  obtenerDominiosInternos,
+  MODO_SERVIDOR,
   crearAsignacion,
   desactivarAsignacion,
   entregarCanje,
@@ -25,6 +29,7 @@ import {
   saldoConfirmado,
   useStore,
 } from '../data/store'
+import type { DominiosInternos } from '../data/store'
 import type { AlertaFraude, Canje, CategoriaResiduo, EstadoPunto, Institucion, PuntoReciclaje, Recompensa, Rol, Usuario } from '../data/types'
 import { Alerta, Badge, Campo, Encabezado, EstadoBadge, Modal, Stat, Vacio, useAccion } from '../components/ui'
 import { ChipCategoria, MapaCampus, Qr, enlaceQr, ImagenReciclaje } from '../components/Visual'
@@ -808,10 +813,22 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
   const { error, setError, ejecutar } = useAccion()
   const lista = db.usuarios.filter((u) => `${u.nombre} ${u.correo}`.toLowerCase().includes(busqueda.toLowerCase()))
   const u = db.usuarios.find((x) => x.id === sel)
+  const [creando, setCreando] = useState(false)
 
   return (
     <div className="pagina">
-      <Encabezado titulo="Usuarios" descripcion="Bloquear una cuenta revoca sus sesiones sin borrar el historial." />
+      <Encabezado
+        titulo="Usuarios"
+        descripcion="Bloquear una cuenta revoca sus sesiones sin borrar el historial."
+        acciones={
+          MODO_SERVIDOR && (
+            <button type="button" className="btn btn-tinta" onClick={() => setCreando(true)}>
+              + Crear cuenta
+            </button>
+          )
+        }
+      />
+      {creando && <CrearCuentaInterna onCerrar={() => setCreando(false)} />}
       <input className="input buscador" placeholder="Buscar por nombre o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar usuarios" />
       <div className="tabla-envoltura" tabIndex={0} role="region" aria-label="Tabla (desplázala con las flechas si no cabe)">
         <table className="tabla">
@@ -1196,6 +1213,158 @@ export function ResumenAliado({ usuario }: { usuario: Usuario }) {
           </ul>
         )}
       </section>
+    </div>
+  )
+}
+
+// Cuentas internas: la administración crea la cuenta con el dominio de su rol (RF25)
+const ROLES_INTERNOS: { rol: Rol; texto: string }[] = [
+  { rol: 'usuario', texto: 'Estudiante' },
+  { rol: 'recolector', texto: 'Recolector' },
+  { rol: 'aliado', texto: 'Aliado' },
+  { rol: 'admin', texto: 'Administrador' },
+]
+
+function useDominiosInternos() {
+  const [dominios, setDominios] = useState<DominiosInternos | null>(null)
+  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  useEffect(() => {
+    obtenerDominiosInternos()
+      .then(setDominios)
+      .catch((e: Error) => setErrorCarga(e.message))
+  }, [])
+  return { dominios, setDominios, errorCarga }
+}
+
+function CrearCuentaInterna({ onCerrar }: { onCerrar: () => void }) {
+  const { db } = useStore()
+  const { dominios, errorCarga } = useDominiosInternos()
+  const [f, setF] = useState({ nombre: '', usuario: '', rol: 'usuario' as Rol, institucionId: INSTITUCION_INVITADOS, facultad: '' })
+  const [creada, setCreada] = useState<{ correo: string; password: string } | null>(null)
+  const [copiado, setCopiado] = useState('')
+  const { error, cargando, ejecutar } = useAccion()
+  const universidades = db.instituciones.filter((i) => i.activa)
+  const copiar = (texto: string, que: string) => {
+    void navigator.clipboard?.writeText(texto).then(() => setCopiado(que))
+  }
+
+  return (
+    <Modal abierto titulo={creada ? 'Cuenta creada' : 'Crear cuenta'} onCerrar={onCerrar}>
+      {creada ? (
+        <div className="form">
+          <Alerta tono="ok">Pásale estos datos a la persona. La contraseña <b>no se volverá a mostrar</b>; podrá cambiarla en Mi perfil.</Alerta>
+          <Campo etiqueta="Correo">
+            {(id) => (
+              <div className="form-linea">
+                <input id={id} className="input input-tecnico" readOnly value={creada.correo} />
+                <button type="button" className="btn btn-fantasma" onClick={() => copiar(creada.correo, 'correo')}>{copiado === 'correo' ? '✓ Copiado' : 'Copiar'}</button>
+              </div>
+            )}
+          </Campo>
+          <Campo etiqueta="Contraseña inicial">
+            {(id) => (
+              <div className="form-linea">
+                <input id={id} className="input input-tecnico" readOnly value={creada.password} />
+                <button type="button" className="btn btn-fantasma" onClick={() => copiar(creada.password, 'clave')}>{copiado === 'clave' ? '✓ Copiada' : 'Copiar'}</button>
+              </div>
+            )}
+          </Campo>
+          <p className="nota">Este correo no tiene buzón: los códigos de la cuenta (primer ingreso de administradores y aliados, cambio de contraseña) llegan al correo del proyecto con el asunto [{creada.correo}].</p>
+          <button type="button" className="btn btn-tinta btn-bloque" onClick={onCerrar}>Listo</button>
+        </div>
+      ) : (
+        <form
+          className="form"
+          onSubmit={async (e: FormEvent) => {
+            e.preventDefault()
+            const r = await ejecutar(() => crearCuentaInterna(f))
+            if (r) setCreada(r)
+          }}
+        >
+          {(error || errorCarga) && <Alerta tono="error">{error ?? errorCarga}</Alerta>}
+          <Campo etiqueta="Nombre completo">{(id) => <input id={id} className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} required />}</Campo>
+          <Campo etiqueta="Rol">
+            {(id) => (
+              <select id={id} className="input" value={f.rol} onChange={(e) => setF({ ...f, rol: e.target.value as Rol })}>
+                {ROLES_INTERNOS.map((r) => (
+                  <option key={r.rol} value={r.rol}>{r.texto}</option>
+                ))}
+              </select>
+            )}
+          </Campo>
+          <Campo etiqueta="Correo" ayuda="Solo letras, números, punto o guion. El dominio depende del rol.">
+            {(id, d) => (
+              <div className="campo-correo-interno">
+                <input id={id} aria-describedby={d} className="input input-tecnico" value={f.usuario} onChange={(e) => setF({ ...f, usuario: e.target.value.toLowerCase().replace(/\s/g, '') })} placeholder="juan.perez" autoComplete="off" required />
+                <span className="campo-correo-dominio">@{dominios?.[f.rol] ?? '…'}</span>
+              </div>
+            )}
+          </Campo>
+          <Campo etiqueta="Universidad" ayuda="Para el EcoRanking. Si no pertenece a ninguna, déjalo en Invitados.">
+            {(id, d) => (
+              <select id={id} aria-describedby={d} className="input" value={f.institucionId} onChange={(e) => setF({ ...f, institucionId: e.target.value })}>
+                {universidades.map((i) => (
+                  <option key={i.id} value={i.id}>{i.nombre}</option>
+                ))}
+              </select>
+            )}
+          </Campo>
+          <Campo etiqueta="Facultad o área (opcional)">{(id) => <input id={id} className="input" value={f.facultad} onChange={(e) => setF({ ...f, facultad: e.target.value })} />}</Campo>
+          <button className="btn btn-tinta btn-bloque" disabled={cargando || !dominios}>Crear cuenta</button>
+        </form>
+      )}
+    </Modal>
+  )
+}
+
+// Dominios internos por rol: no se muestran en el registro ni en el inicio
+export function AdminDominios() {
+  const { dominios, setDominios, errorCarga } = useDominiosInternos()
+  const [ed, setEd] = useState<DominiosInternos | null>(null)
+  const [guardado, setGuardado] = useState(false)
+  const { error, cargando, ejecutar } = useAccion()
+  const valores = ed ?? dominios
+
+  return (
+    <div className="pagina">
+      <Encabezado
+        titulo="Dominios"
+        descripcion="Dominio del correo de las cuentas que crea la administración, según su rol. No aparecen en el registro: nadie puede crearse una cuenta así por su cuenta."
+      />
+      {!MODO_SERVIDOR ? (
+        <Alerta tono="info">Disponible en el modo con base de datos.</Alerta>
+      ) : !valores ? (
+        errorCarga ? <Alerta tono="error">{errorCarga}</Alerta> : <p className="nota">Cargando…</p>
+      ) : (
+        <form
+          className="form bloque"
+          onSubmit={async (e: FormEvent) => {
+            e.preventDefault()
+            setGuardado(false)
+            const r = await ejecutar(() => guardarDominiosInternos(valores))
+            if (r) {
+              setDominios(r)
+              setEd(null)
+              setGuardado(true)
+            }
+          }}
+        >
+          {error && <Alerta tono="error">{error}</Alerta>}
+          {guardado && <Alerta tono="ok">Dominios guardados. Las cuentas ya creadas conservan su correo.</Alerta>}
+          {ROLES_INTERNOS.map((r) => (
+            <Campo key={r.rol} etiqueta={r.texto}>
+              {(id) => (
+                <div className="campo-correo-interno">
+                  <span className="campo-correo-dominio">nombre@</span>
+                  <input id={id} className="input input-tecnico" value={valores[r.rol]} onChange={(e) => setEd({ ...valores, [r.rol]: e.target.value.trim().toLowerCase() })} required />
+                </div>
+              )}
+            </Campo>
+          ))}
+          <p className="nota">Estos correos no tienen buzón propio: sus códigos se envían al correo del proyecto. Las cuentas se crean en Usuarios → Crear cuenta.</p>
+          <button className="btn btn-tinta" disabled={cargando || !ed}>Guardar dominios</button>
+        </form>
+      )}
     </div>
   )
 }

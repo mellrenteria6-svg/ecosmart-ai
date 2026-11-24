@@ -13,7 +13,7 @@ import { Reciclar } from './pages/Reciclar'
 import { LotesCerrados, PendientesPunto, PuntosRecolector, RevisionIndividual } from './pages/Recolector'
 import { Reportes } from './pages/Reportes'
 import { EcoRanking, Impacto } from './pages/Comunidad'
-import { ResumenAliado, AdminAlertas, AdminInstituciones, AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
+import { ResumenAliado, AdminAlertas, AdminDominios, AdminInstituciones, AdminCategorias, AdminPuntos, AdminRecompensas, AdminUsuarios, Auditoria, Dashboard, Entregas } from './pages/Admin'
 
 const INICIO_ROL: Record<Rol, string> = { usuario: '/app', recolector: '/rec', admin: '/admin', aliado: '/aliado' }
 
@@ -74,6 +74,8 @@ function PaginaAdmin({ u, partes }: { u: Usuario; partes: string[] }) {
       return <AdminAlertas usuario={u} />
     case 'instituciones':
       return <AdminInstituciones usuario={u} />
+    case 'dominios':
+      return <AdminDominios />
     case 'reportes':
       return <Reportes key={partes[2] ?? ''} usuario={u} reporteId={partes[2]} />
     default:

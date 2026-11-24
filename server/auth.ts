@@ -104,6 +104,10 @@ export function registrar(d: { nombre: string; correo: string; facultad: string;
     const correoN = String(d.correo ?? '').trim().toLowerCase()
     if (!String(d.nombre ?? '').trim()) throw new ErrorHttp(400, 'Ingresa tu nombre.')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoN)) throw new ErrorHttp(400, 'Escribe un correo válido, por ejemplo nombre@gmail.com.')
+    // Los dominios internos (@eco.smart.com y sus variantes por rol) solo los usa la administración
+    if ((await c.query('SELECT es_correo_interno($1) AS si', [correoN])).rows[0].si) {
+      throw new ErrorHttp(400, 'Ese correo es de uso interno: la cuenta la crea la administración.')
+    }
     // La universidad del dominio o, si no hay, "Invitados" (si la administración la tiene activa)
     const { rows: inst } = await c.query('SELECT institucion_para_registro($1) AS id', [correoN])
     if (!inst[0].id) throw new ErrorHttp(400, 'Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
@@ -188,8 +192,10 @@ export function iniciarSesion(correoIn: string, password: string, equipo?: unkno
       }
       const codigo = codigoSeisDigitos()
       await crearToken(c, u.id, 'segundo_factor', 10, codigo)
+      // Cuentas internas y de demostración no tienen buzón: el código llega al correo del proyecto
+      const alProyecto = (await c.query("SELECT es_correo_interno($1) OR $1::text LIKE '%@universidad.edu.ec' AS si", [u.correo])).rows[0].si as boolean
       await correo(c, u.correo, 'Código de acceso EcoSmart AI', `Tu código de segundo factor es ${codigo}. Vence en 10 minutos.`)
-      return { tipo: 'segundo_factor', usuarioId: u.id }
+      return { tipo: 'segundo_factor', usuarioId: u.id, alProyecto }
     }
     return { tipo: 'ok', sesion: await abrirSesion(c, u.id) }
   }).then((r) => {
@@ -266,4 +272,86 @@ export async function comprobarPassword(usuarioId: string, password: unknown) {
 export async function invalidarCredenciales(usuarioId: string) {
   await pool.query("UPDATE usuario SET password_hash = 'cuenta-eliminada' WHERE id = $1", [usuarioId])
   await pool.query('DELETE FROM sesion WHERE usuario_id = $1', [usuarioId])
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas internas: la administración las crea con el dominio de cada rol
+// ---------------------------------------------------------------------------
+const ROLES = ['usuario', 'recolector', 'aliado', 'admin'] as const
+type RolInterno = (typeof ROLES)[number]
+
+async function exigirAdmin(c: PoolClient, adminId: string) {
+  const { rows } = await c.query("SELECT 1 FROM usuario WHERE id = $1 AND rol = 'admin' AND NOT bloqueado", [adminId])
+  if (!rows[0]) throw new ErrorHttp(403, 'Solo la administración puede hacer esto.')
+}
+
+/** Dominio interno de cada rol. */
+export async function dominiosInternos(adminId: string) {
+  const c = await pool.connect()
+  try {
+    await exigirAdmin(c, adminId)
+    const { rows } = await c.query('SELECT rol::text AS rol, dominio::text AS dominio FROM dominio_interno ORDER BY rol')
+    return { dominios: Object.fromEntries(rows.map((r) => [r.rol, r.dominio])) as Record<RolInterno, string> }
+  } finally {
+    c.release()
+  }
+}
+
+export function guardarDominiosInternos(adminId: string, datos: unknown) {
+  return enTransaccion(async (c) => {
+    await exigirAdmin(c, adminId)
+    const d = (datos ?? {}) as Record<string, unknown>
+    const nuevos = ROLES.map((rol) => [rol, String(d[rol] ?? '').trim().toLowerCase().replace(/^@/, '')] as const)
+    for (const [rol, dominio] of nuevos) {
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(dominio)) throw new ErrorHttp(400, `"${dominio || '(vacío)'}" no es un dominio válido para ${rol}. Ejemplo: aliado.eco.smart.com`)
+    }
+    if (new Set(nuevos.map(([, x]) => x)).size !== nuevos.length) throw new ErrorHttp(400, 'Cada rol necesita un dominio distinto.')
+    const choca = await c.query('SELECT dominio::text AS d FROM institucion_dominio WHERE dominio = ANY($1::citext[])', [nuevos.map(([, x]) => x)])
+    if (choca.rows[0]) throw new ErrorHttp(400, `El dominio ${choca.rows[0].d} ya pertenece a una universidad.`)
+    // Se reemplazan todos juntos (los únicos se comprueban al final de la transacción)
+    await c.query('DELETE FROM dominio_interno')
+    for (const [rol, dominio] of nuevos) await c.query('INSERT INTO dominio_interno (rol, dominio) VALUES ($1, $2)', [rol, dominio])
+    await c.query("INSERT INTO auditoria (actor_id, accion, entidad, entidad_id, detalle) VALUES ($1, 'Cambiar dominios internos', 'DOMINIO_INTERNO', '*', $2)", [
+      adminId,
+      nuevos.map(([r, x]) => `${r}: ${x}`).join(', '),
+    ])
+    return { dominios: Object.fromEntries(nuevos) }
+  })
+}
+
+// Contraseña inicial: 12 caracteres sin letras confusas (0/O, 1/l/I), con letras y números
+function claveInicial() {
+  const t = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let clave = ''
+  while (!/[A-Za-z]/.test(clave) || !/\d/.test(clave)) clave = Array.from({ length: 12 }, () => t[randomInt(t.length)]).join('')
+  return clave
+}
+
+/** Crea una cuenta con el dominio interno del rol. Devuelve el correo y la contraseña inicial (se muestra una sola vez). */
+export function crearCuentaInterna(adminId: string, datos: unknown) {
+  return enTransaccion(async (c) => {
+    await exigirAdmin(c, adminId)
+    const d = (datos ?? {}) as Record<string, unknown>
+    const nombre = String(d.nombre ?? '').trim()
+    const usuario = String(d.usuario ?? '').trim().toLowerCase()
+    const rol = String(d.rol ?? '') as RolInterno
+    const facultad = String(d.facultad ?? '').trim().slice(0, 120)
+    if (!nombre || nombre.length > 120) throw new ErrorHttp(400, 'Escribe el nombre de la persona.')
+    if (!/^[a-z0-9]([a-z0-9._-]{0,38}[a-z0-9])?$/.test(usuario)) throw new ErrorHttp(400, 'El usuario solo puede tener letras, números, punto, guion o guion bajo (sin espacios ni tildes), por ejemplo: juan.perez')
+    if (!ROLES.includes(rol)) throw new ErrorHttp(400, 'Elige un rol válido.')
+    const { rows: dom } = await c.query('SELECT dominio::text AS dominio FROM dominio_interno WHERE rol = $1', [rol])
+    if (!dom[0]) throw new ErrorHttp(400, 'Ese rol no tiene dominio interno configurado.')
+    const correo = `${usuario}@${dom[0].dominio}`
+    if ((await c.query('SELECT 1 FROM usuario WHERE correo = $1', [correo])).rowCount) throw new ErrorHttp(409, `Ya existe la cuenta ${correo}.`)
+    const institucionId = String(d.institucionId ?? '') || 'inst-invitados'
+    if (!(await c.query('SELECT 1 FROM institucion WHERE id = $1', [institucionId])).rowCount) throw new ErrorHttp(400, 'Universidad no encontrada.')
+    const password = claveInicial()
+    const { rows } = await c.query(
+      `INSERT INTO usuario (campus_id, nombre, correo, facultad, rol, password_hash, verificado, consentimiento_privacidad, institucion_id)
+       VALUES (1, $1, $2, $3, $4, crypt($5, gen_salt('bf')), true, true, $6) RETURNING id`,
+      [nombre, correo, facultad || 'EcoSmart AI', rol, password, institucionId],
+    )
+    await auditar(c, adminId, 'Crear cuenta interna', rows[0].id, `${correo} (${rol})`)
+    return { correo, password, usuarioId: rows[0].id as string }
+  })
 }

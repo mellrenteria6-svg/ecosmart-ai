@@ -95,15 +95,22 @@ async function vuelta(): Promise<number> {
          ORDER BY creado_en LIMIT $3 FOR UPDATE SKIP LOCKED`,
         [MAX_INTENTOS, ANTIGUEDAD_MAXIMA, POR_VUELTA],
       )
+      // Dominios internos por rol (cuentas creadas por la administración): tampoco tienen buzón
+      const internos = new Set(
+        await c
+          .query('SELECT dominio::text AS d FROM dominio_interno')
+          .then((r) => r.rows.map((x) => String(x.d).toLowerCase()))
+          .catch(() => [] as string[]),
+      )
       for (const fila of rows) {
-        // Cuentas de demostración: el correo va al buzón del proyecto, indicando para quién era
-        const demo = esCorreoDeDemostracion(fila.para)
+        // Cuentas de demostración e internas: el correo va al buzón del proyecto, indicando para quién era
+        const demo = esCorreoDeDemostracion(fila.para) || internos.has(fila.para.toLowerCase().split('@')[1])
         const destino = demo ? destinoDemostracion() : fila.para
         if (!destino) {
           await c.query("UPDATE correo_simulado SET enviado_en = now(), error = 'Cuenta de demostración sin buzón configurado: solo bandeja simulada' WHERE id = $1", [fila.id])
           continue
         }
-        const mensaje = armarCorreo(demo ? { ...fila, asunto: `[Demo: ${fila.para}] ${fila.asunto}`, cuerpo: `(Para la cuenta de demostración ${fila.para}) ${fila.cuerpo}` } : fila)
+        const mensaje = armarCorreo(demo ? { ...fila, asunto: `[${fila.para}] ${fila.asunto}`, cuerpo: `(Para la cuenta ${fila.para}, que no tiene buzón propio) ${fila.cuerpo}` } : fila)
         try {
           await transporte!.sendMail({ ...mensaje, to: destino })
           await c.query('UPDATE correo_simulado SET enviado_en = now(), intentos = intentos + 1, error = NULL WHERE id = $1', [fila.id])

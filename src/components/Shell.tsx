@@ -33,6 +33,7 @@ const MENU: Record<Rol, { href: string; texto: string; mas?: boolean }[]> = {
     { href: '#/admin/categorias', texto: 'Categorías', mas: true },
     { href: '#/admin/alertas', texto: 'Alertas', mas: true },
     { href: '#/admin/instituciones', texto: 'Universidades', mas: true },
+    { href: '#/admin/dominios', texto: 'Dominios', mas: true },
     { href: '#/admin/auditoria', texto: 'Auditoría', mas: true },
   ],
   aliado: [

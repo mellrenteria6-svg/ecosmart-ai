@@ -67,12 +67,17 @@ export function Ingresar() {
   const { error, cargando, ejecutar } = useAccion()
   // Sin correo real (o una cuenta de demostración sin buzón configurado) el código está en la bandeja simulada
   const { usaBandeja, demo } = useAvisoCorreo(correo)
+  // Cuentas internas (@…eco.smart.com) y de demostración: el código va al correo del proyecto
+  const [alProyecto, setAlProyecto] = useState(false)
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
     const r = await ejecutar(() => iniciarSesion(correo, password))
     if (!r) return
-    if (r.tipo === 'segundo_factor') setSegundoFactor(r.usuarioId)
+    if (r.tipo === 'segundo_factor') {
+      setAlProyecto(!!r.alProyecto || demo)
+      setSegundoFactor(r.usuarioId)
+    }
     else navegar(r.usuario.rol === 'recolector' ? '/rec' : r.usuario.rol === 'aliado' ? '/aliado' : r.usuario.rol === 'admin' ? '/admin' : '/app')
   }
 
@@ -92,8 +97,8 @@ export function Ingresar() {
             ayuda={
               usaBandeja ? (
                 <>Revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</>
-              ) : demo ? (
-                'Cuenta de demostración: el código llega al correo del proyecto. Vence en 10 minutos.'
+              ) : alProyecto ? (
+                'Esta cuenta no tiene buzón propio: el código llegó al correo del proyecto. Pídeselo a la administración. Vence en 10 minutos.'
               ) : (
                 'Revisa tu bandeja de entrada (y la carpeta de Spam). Vence en 10 minutos.'
               )

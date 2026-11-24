@@ -4730,3 +4730,24 @@ textarea.input {
     display: none;
   }
 }
+
+/* Correo interno: usuario + dominio del rol en una sola línea */
+.campo-correo-interno {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.campo-correo-interno .input {
+  flex: 1;
+  min-width: 0;
+}
+.campo-correo-dominio {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+/* Correos y contraseñas: letra técnica pero respetando mayúsculas y minúsculas */
+.input-tecnico {
+  font-family: var(--font-mono);
+}

@@ -398,6 +398,25 @@ api.post('/cuenta/eliminar', limite(10, 60_000), async (req, res) => {
 // Cerrar sesión nunca se limita.
 const LIMITE_AUTH = Number(process.env.LIMITE_AUTH ?? 20)
 const limiteAuth = limite(LIMITE_AUTH, 60_000)
+// Cuentas internas (dominios por rol): solo la administración (RF25)
+api.get('/admin/dominios', async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
+  res.json(await auth.dominiosInternos(id))
+})
+api.put('/admin/dominios', limite(30, 60_000), async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
+  res.json(await auth.guardarDominiosInternos(id, req.body?.dominios))
+})
+api.post('/admin/cuentas', limite(30, 60_000), async (req, res) => {
+  const id = await auth.usuarioDeToken(tokenDe(req))
+  if (!id) return void res.status(401).json({ error: 'Inicia sesión para continuar.' })
+  const r = await auth.crearCuentaInterna(id, req.body)
+  olvidarMemoria() // la lista de usuarios del panel debe mostrar la cuenta nueva
+  res.json(r)
+})
+
 const rutasAuth = express.Router()
 rutasAuth.use((req, res, next) => (req.path === '/logout' ? next() : limiteAuth(req, res, next)))
 rutasAuth.post('/registro', async (req, res) => void res.json(await auth.registrar(req.body)))
