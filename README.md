@@ -106,6 +106,8 @@ Más detalles de la base de datos en [db/README.md](db/README.md).
 
 Verificación de accesibilidad WCAG 2.2 AA y responsive: [docs/accesibilidad-y-responsive.md](docs/accesibilidad-y-responsive.md).
 
-**Publicar en internet** (Render + Neon, gratis): guía paso a paso en [docs/publicar.md](docs/publicar.md).
+**Demostración en internet:** <https://mellrenteria6-svg.github.io/ecosmart-ai/> — versión sin servidor (los datos quedan en el navegador de cada persona, con las cuentas de demostración). Se publica sola en GitHub Pages con cada cambio.
+
+**Publicar la versión completa** (Render + Neon, gratis): guía paso a paso en [docs/publicar.md](docs/publicar.md).
 
 Respaldos, recuperación, disponibilidad, prueba de carga y seguridad (RNF02, RNF04, RNF06, RNF09, RNF11, RNF12): [docs/continuidad-y-capacidad.md](docs/continuidad-y-capacidad.md).

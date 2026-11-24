@@ -1,0 +1,39 @@
+# Publica la versión de demostración (sin servidor: los datos viven en el navegador de cada
+# persona) en GitHub Pages, cada vez que se sube un cambio a main.
+# Dirección: https://mellrenteria6-svg.github.io/ecosmart-ai/
+name: Publicar demostración
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Modo demostración (sin VITE_API_URL) y dentro de la carpeta /ecosmart-ai/
+      - run: npx tsc -b && npx vite build --base=/ecosmart-ai/
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - id: despliegue
+        uses: actions/deploy-pages@v4

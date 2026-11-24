@@ -15,7 +15,9 @@ export function soportado() {
 
 export async function registrarServiceWorker() {
   if (!('serviceWorker' in navigator)) return null
-  const url = import.meta.env.PROD ? '/sw.js' : '/sw.js?modo=dev'
+  // BASE_URL: "/" en la PC; "/ecosmart-ai/" en GitHub Pages
+  const base = import.meta.env.BASE_URL
+  const url = import.meta.env.PROD ? `${base}sw.js` : `${base}sw.js?modo=dev`
   try {
     await navigator.serviceWorker.register(url)
     return await navigator.serviceWorker.ready
@@ -114,8 +116,9 @@ export async function probar() {
 function mostrarLocal(titulo: string, mensaje: string) {
   if (Notification.permission !== 'granted') return
   void navigator.serviceWorker?.getRegistration().then((reg) => {
-    if (reg) void reg.showNotification(titulo, { body: mensaje, icon: '/favicon.svg', data: { url: '#/app/notificaciones' } })
-    else new Notification(titulo, { body: mensaje, icon: '/favicon.svg' })
+    const icono = `${import.meta.env.BASE_URL}favicon.svg`
+    if (reg) void reg.showNotification(titulo, { body: mensaje, icon: icono, data: { url: '#/app/notificaciones' } })
+    else new Notification(titulo, { body: mensaje, icon: icono })
   })
 }
 

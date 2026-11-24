@@ -1,12 +1,14 @@
 // Service worker de EcoSmart AI
 //  - Producción: guarda la app en caché para abrirla sin conexión (RNF01, RNF03)
 //  - Siempre: recibe las notificaciones push y abre la app al tocarlas (RF23)
-const CACHE = 'ecosmart-v2'
+const CACHE = 'ecosmart-v3'
 // En desarrollo (sw.js?modo=dev) no se usa caché para no interferir con la recarga en caliente
 const DESARROLLO = new URL(self.location.href).searchParams.get('modo') === 'dev'
+// Carpeta donde vive la página: "/" en la PC, "/ecosmart-ai/" en GitHub Pages
+const BASE = new URL('./', self.location.href).pathname
 
 self.addEventListener('install', (e) => {
-  if (!DESARROLLO) e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/index.html', '/favicon.svg', '/manifest.webmanifest'])))
+  if (!DESARROLLO) e.waitUntil(caches.open(CACHE).then((c) => c.addAll([BASE, BASE + 'index.html', BASE + 'favicon.svg', BASE + 'manifest.webmanifest'])))
   self.skipWaiting()
 })
 
@@ -20,7 +22,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request
   const url = new URL(req.url)
   // La API nunca se guarda en caché: los datos deben venir siempre del servidor
-  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith(BASE + 'api/')) return
   e.respondWith(
     fetch(req)
       .then((res) => {
@@ -28,7 +30,7 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE).then((c) => c.put(req, copia))
         return res
       })
-      .catch(() => caches.match(req).then((r) => r || caches.match('/index.html'))),
+      .catch(() => caches.match(req).then((r) => r || caches.match(BASE + 'index.html'))),
   )
 })
 
@@ -43,8 +45,8 @@ self.addEventListener('push', (e) => {
   e.waitUntil(
     self.registration.showNotification(aviso.titulo, {
       body: aviso.mensaje,
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
+      icon: BASE + 'favicon.svg',
+      badge: BASE + 'favicon.svg',
       lang: 'es',
       data: { url: aviso.url },
     }),
@@ -54,7 +56,7 @@ self.addEventListener('push', (e) => {
 // Al tocar el aviso: enfoca la app si ya está abierta o la abre en la sección indicada
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
-  const destino = new URL('/' + (e.notification.data?.url ?? '#/'), self.location.origin).href
+  const destino = new URL(BASE + (e.notification.data?.url ?? '#/'), self.location.origin).href
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ventanas) => {
       const abierta = ventanas.find((v) => new URL(v.url).origin === self.location.origin)
