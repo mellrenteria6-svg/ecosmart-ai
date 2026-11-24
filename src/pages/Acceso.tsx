@@ -18,7 +18,7 @@ import { Marca } from '../components/Shell'
 import { Alerta, Campo, EntradaContrasena, useAccion } from '../components/ui'
 import { hace } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
-import { esCorreoDemo, useCorreoReal } from '../lib/correo-real'
+import { useAvisoCorreo, useCorreoReal } from '../lib/correo-real'
 
 const FACULTADES = ['Ingeniería', 'Ciencias Económicas', 'Ciencias de la Salud', 'Arquitectura y Diseño', 'Ciencias Sociales', 'Educación', 'Personal administrativo']
 
@@ -64,9 +64,8 @@ export function Ingresar() {
   const cuentaEliminada = useRuta().query.get('eliminada') === '1'
   const [codigo, setCodigo] = useState('')
   const { error, cargando, ejecutar } = useAccion()
-  const correoReal = useCorreoReal()
-  // Las cuentas de demostración no tienen buzón real: su código sigue en la bandeja simulada
-  const usaBandeja = !correoReal || esCorreoDemo(correo)
+  // Sin correo real (o una cuenta de demostración sin buzón configurado) el código está en la bandeja simulada
+  const { usaBandeja, demo } = useAvisoCorreo(correo)
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
@@ -84,12 +83,20 @@ export function Ingresar() {
 
   if (segundoFactor) {
     return (
-      <MarcoAcceso titulo="Verificación en dos pasos" subtitulo="Las cuentas de administración usan un segundo factor. Enviamos un código de 6 dígitos a tu correo.">
+      <MarcoAcceso titulo="Verificación en dos pasos" subtitulo="Es la primera vez que entras desde este equipo. Enviamos un código de 6 dígitos a tu correo; después, este equipo queda recordado 30 días.">
         <form onSubmit={enviarCodigo} className="form">
           {error && <Alerta tono="error">{error}</Alerta>}
           <Campo
             etiqueta="Código de verificación"
-            ayuda={usaBandeja ? <>Cuenta de demostración: revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</> : 'Revisa tu bandeja de entrada (y la carpeta de Spam). Vence en 10 minutos.'}
+            ayuda={
+              usaBandeja ? (
+                <>Revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</>
+              ) : demo ? (
+                'Cuenta de demostración: el código llega al correo del proyecto. Vence en 10 minutos.'
+              ) : (
+                'Revisa tu bandeja de entrada (y la carpeta de Spam). Vence en 10 minutos.'
+              )
+            }
           >
             {(id, d) => <input id={id} aria-describedby={d} className="input input-codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} ref={enfocarAlMontar()} required />}
           </Campo>
@@ -258,22 +265,32 @@ export function Verificar() {
   )
 }
 
+// Cambiar o recuperar la contraseña: es el único momento en que se pide un código por correo
+// a cualquier cuenta (además del segundo factor del administrador y el aliado en un equipo nuevo).
 export function Recuperar() {
-  const [correo, setCorreo] = useState('')
+  const ruta = useRuta()
+  const [correo, setCorreo] = useState(ruta.query.get('correo') ?? '')
   const [enviado, setEnviado] = useState(false)
-  const correoReal = useCorreoReal()
+  const [codigo, setCodigo] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmacion, setConfirmacion] = useState('')
+  const [ok, setOk] = useState(false)
+  const { error, setError, cargando, ejecutar } = useAccion()
+  const { usaBandeja } = useAvisoCorreo(correo)
+
+  if (ok) {
+    return (
+      <MarcoAcceso titulo="Contraseña actualizada" subtitulo="Se cerraron tus sesiones abiertas en otros equipos.">
+        <div className="form">
+          <a className="btn btn-tinta btn-bloque" href="#/ingresar">Ingresar con la nueva contraseña</a>
+        </div>
+      </MarcoAcceso>
+    )
+  }
+
   return (
-    <MarcoAcceso titulo="Recupera tu acceso" subtitulo="Te enviaremos un enlace para crear una nueva contraseña.">
-      {enviado ? (
-        <>
-          <Alerta tono="ok">Si el correo está registrado, recibirás un enlace en unos minutos{correoReal ? ' (revisa también Spam)' : ''}. El enlace vence en 60 minutos.</Alerta>
-          {(!correoReal || esCorreoDemo(correo)) && (
-            <div className="form">
-              <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>
-            </div>
-          )}
-        </>
-      ) : (
+    <MarcoAcceso titulo="Cambia tu contraseña" subtitulo={enviado ? <>Enviamos un código de 6 dígitos a <b>{correo}</b>. Vence en 15 minutos.</> : 'Te enviaremos un código de 6 dígitos a tu correo.'}>
+      {!enviado ? (
         <form
           className="form"
           onSubmit={(e) => {
@@ -283,31 +300,10 @@ export function Recuperar() {
           }}
         >
           <Campo etiqueta="Correo institucional">
-            {(id) => <input id={id} className="input" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required />}
+            {(id) => <input id={id} className="input" type="email" autoComplete="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required />}
           </Campo>
-          <button className="btn btn-tinta btn-bloque">Enviar enlace</button>
+          <button className="btn btn-tinta btn-bloque">Enviar código</button>
         </form>
-      )}
-    </MarcoAcceso>
-  )
-}
-
-export function Restablecer() {
-  const ruta = useRuta()
-  const token = ruta.query.get('token') ?? ''
-  const [password, setPassword] = useState('')
-  const [confirmacion, setConfirmacion] = useState('')
-  const [ok, setOk] = useState(false)
-  const { error, setError, cargando, ejecutar } = useAccion()
-  return (
-    <MarcoAcceso titulo="Nueva contraseña" subtitulo="Al cambiarla se cerrarán todas tus sesiones abiertas.">
-      {ok ? (
-        <>
-          <Alerta tono="ok">Contraseña actualizada. Ingresa con tu nueva contraseña.</Alerta>
-          <div className="form">
-            <a className="btn btn-tinta btn-bloque" href="#/ingresar">Ingresar</a>
-          </div>
-        </>
       ) : (
         <form
           className="form"
@@ -315,20 +311,36 @@ export function Restablecer() {
             e.preventDefault()
             if (password !== confirmacion) return setError('Las contraseñas no coinciden.')
             const r = await ejecutar(async () => {
-              await restablecerPassword(token, password)
+              await restablecerPassword(correo, codigo, password)
               return true
             })
             if (r) setOk(true)
           }}
         >
           {error && <Alerta tono="error">{error}</Alerta>}
+          <Campo
+            etiqueta="Código de verificación"
+            ayuda={usaBandeja ? <>Revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</> : 'Si el correo está registrado, llega en unos segundos. Revisa también la carpeta de Spam.'}
+          >
+            {(id, d) => <input id={id} aria-describedby={d} className="input input-codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} ref={enfocarAlMontar()} required />}
+          </Campo>
           <Campo etiqueta="Nueva contraseña" ayuda="Mínimo 8 caracteres, con letras y números.">
             {(id, d) => <EntradaContrasena id={id} aria-describedby={d} className="input" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}
           </Campo>
           <Campo etiqueta="Confirmar contraseña">
             {(id) => <EntradaContrasena id={id} className="input" autoComplete="new-password" value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} required />}
           </Campo>
-          <button className="btn btn-tinta btn-bloque" disabled={cargando}>Guardar contraseña</button>
+          <button className="btn btn-tinta btn-bloque" disabled={cargando || codigo.length !== 6}>Guardar contraseña</button>
+          <button
+            type="button"
+            className="btn btn-fantasma btn-bloque"
+            onClick={() => {
+              solicitarRestablecimiento(correo)
+              setCodigo('')
+            }}
+          >
+            Enviar otro código
+          </button>
         </form>
       )}
     </MarcoAcceso>

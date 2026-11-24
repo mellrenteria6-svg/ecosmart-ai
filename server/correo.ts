@@ -31,6 +31,16 @@ export function usarTransporte(t: Transporte | null) {
 export const correoActivo = () => transporte !== null
 
 const remitente = () => process.env.CORREO_REMITENTE ?? `EcoSmart AI <${process.env.SMTP_USUARIO ?? 'no-responder@ecosmart.local'}>`
+/**
+ * Buzón real que recibe los correos de las cuentas de demostración (que no tienen buzón propio).
+ * Por defecto, el mismo correo remitente del proyecto.
+ */
+export function destinoDemostracion(): string | null {
+  const explicito = process.env.CORREO_DEMO_DESTINO?.trim()
+  if (explicito) return explicito
+  const deRemitente = process.env.CORREO_REMITENTE?.match(/<([^>]+@[^>]+)>/)?.[1] ?? process.env.CORREO_REMITENTE
+  return deRemitente && /^[^@\s<>]+@[^@\s<>]+$/.test(deRemitente.trim()) ? deRemitente.trim() : null
+}
 /** Dominios sin buzón real (cuentas de demostración): sus correos quedan solo en la bandeja simulada. */
 const dominiosSinEnvio = () => (process.env.CORREO_NO_ENVIAR ?? 'universidad.edu.ec').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
 
@@ -86,12 +96,16 @@ async function vuelta(): Promise<number> {
         [MAX_INTENTOS, ANTIGUEDAD_MAXIMA, POR_VUELTA],
       )
       for (const fila of rows) {
-        if (esCorreoDeDemostracion(fila.para)) {
-          await c.query("UPDATE correo_simulado SET enviado_en = now(), error = 'Cuenta de demostración: solo bandeja simulada' WHERE id = $1", [fila.id])
+        // Cuentas de demostración: el correo va al buzón del proyecto, indicando para quién era
+        const demo = esCorreoDeDemostracion(fila.para)
+        const destino = demo ? destinoDemostracion() : fila.para
+        if (!destino) {
+          await c.query("UPDATE correo_simulado SET enviado_en = now(), error = 'Cuenta de demostración sin buzón configurado: solo bandeja simulada' WHERE id = $1", [fila.id])
           continue
         }
+        const mensaje = armarCorreo(demo ? { ...fila, asunto: `[Demo: ${fila.para}] ${fila.asunto}`, cuerpo: `(Para la cuenta de demostración ${fila.para}) ${fila.cuerpo}` } : fila)
         try {
-          await transporte!.sendMail(armarCorreo(fila))
+          await transporte!.sendMail({ ...mensaje, to: destino })
           await c.query('UPDATE correo_simulado SET enviado_en = now(), intentos = intentos + 1, error = NULL WHERE id = $1', [fila.id])
           enviados += 1
         } catch (e) {

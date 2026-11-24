@@ -251,6 +251,27 @@ describe('API sobre PostgreSQL', () => {
     expect(guardados.rows.map((r) => (r as { idempotency_key: string }).idempotency_key)).toEqual(['lote-1', 'lote-2', 'lote-3'])
   })
 
+  it('CP-RNF13: el segundo factor se pide una vez por equipo; cambiar el rol lo olvida', async () => {
+    token = null
+    const login = (equipo?: string) => api('/auth/login', { correo: 'aliado@universidad.edu.ec', password: 'EcoSmart2026', equipo })
+    const primero = await login()
+    expect(primero.tipo).toBe('segundo_factor')
+    const codigo = (await correoPara('aliado@universidad.edu.ec')).cuerpo.match(/\d{6}/)[0]
+    const v = await api('/auth/segundo-factor', { usuarioId: primero.usuarioId, codigo })
+    expect(v.equipo).toMatch(/^[\w-]{40,}$/)
+    // Mismo equipo: entra sin código; otro equipo (o uno inventado): pide código
+    expect((await login(v.equipo)).tipo).toBe('ok')
+    expect((await login()).tipo).toBe('segundo_factor')
+    expect((await login('x'.repeat(43))).tipo).toBe('segundo_factor')
+    // Un cambio de rol revoca los equipos de confianza de esa cuenta
+    await entrar('admin@universidad.edu.ec')
+    const aliadoId = primero.usuarioId
+    expect((await api('/accion/cambiarRol', { args: ['x', aliadoId, 'usuario'] })).status).toBe(200)
+    expect((await api('/accion/cambiarRol', { args: ['x', aliadoId, 'aliado'] })).status).toBe(200)
+    token = null
+    expect((await login(v.equipo)).tipo).toBe('segundo_factor')
+  })
+
   it('CP-RNF13: el administrador entra con segundo factor y entrega el canje una sola vez', async () => {
     await entrar('admin@universidad.edu.ec')
     expect((await api('/accion/crearAjuste', { args: ['x', ana, 50, 'Bono'] })).status).toBe(200)
@@ -345,7 +366,7 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
     expect(buzon.length).toBe(antes)
     expect(await fila('luis.mora@espol.edu.ec')).toMatchObject({ enviado_en: null, intentos: 1, error: 'Servidor de correo no disponible' })
     await correo.repartir()
-    expect(buzon.at(-1)?.subject).toBe('Restablece tu contraseña')
+    expect(buzon.at(-1)?.subject).toBe('Código para cambiar tu contraseña')
     expect(await fila('luis.mora@espol.edu.ec')).toMatchObject({ intentos: 2, error: null })
   })
 
@@ -364,6 +385,34 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
     expect(r.correos.length).toBeGreaterThan(0)
     expect(r.correos.every((c: { para: string }) => c.para.endsWith('@universidad.edu.ec'))).toBe(true)
     expect((await api('/salud')).correoReal).toBe(true)
+  })
+
+  it('CP-RF02: cambiar la contraseña pide el código de 6 dígitos que llega al correo', async () => {
+    await api('/auth/recuperar', { correo: 'luis.mora@espol.edu.ec' })
+    await correo.repartir()
+    const codigo = buzon.at(-1)!.text.match(/\b(\d{6})\b/)![1]
+    expect(buzon.at(-1)!.text).not.toContain('http') // un código, no un enlace
+    const otro = codigo === '000000' ? '111111' : '000000'
+    expect((await api('/auth/restablecer', { correo: 'luis.mora@espol.edu.ec', codigo: otro, password: 'Nueva2026x' })).status).toBe(400)
+    expect((await api('/auth/restablecer', { correo: 'otra.persona@espol.edu.ec', codigo, password: 'Nueva2026x' })).status).toBe(400)
+    expect((await api('/auth/restablecer', { correo: 'luis.mora@espol.edu.ec', codigo, password: 'Nueva2026x' })).status).toBe(200)
+    expect((await api('/auth/restablecer', { correo: 'luis.mora@espol.edu.ec', codigo, password: 'Otra2026xx' })).status).toBe(400) // un solo uso
+    expect((await api('/auth/login', { correo: 'luis.mora@espol.edu.ec', password: 'Nueva2026x' })).tipo).toBe('ok')
+  })
+
+  it('los correos de las cuentas de demostración llegan al buzón del proyecto', async () => {
+    process.env.CORREO_DEMO_DESTINO = 'proyecto@ejemplo.com'
+    try {
+      await api('/auth/recuperar', { correo: 'recolector@universidad.edu.ec' })
+      await correo.repartir()
+      const m = buzon.at(-1)!
+      expect(m.to).toBe('proyecto@ejemplo.com')
+      expect(m.subject).toBe('[Demo: recolector@universidad.edu.ec] Código para cambiar tu contraseña')
+      expect((await api('/salud')).correoDemoReal).toBe(true)
+      expect((await api('/correos')).correos).toEqual([]) // con todo real, la bandeja queda vacía
+    } finally {
+      delete process.env.CORREO_DEMO_DESTINO
+    }
   })
 
   it('escapa el texto en la versión HTML del correo', () => {

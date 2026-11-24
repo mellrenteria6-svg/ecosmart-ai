@@ -14,8 +14,12 @@ export class ErrorHttp extends Error {
 }
 
 const sha256 = (t: string) => createHash('sha256').update(t).digest('hex')
-// Los códigos de 6 dígitos se guardan junto al usuario para que no choquen entre cuentas
-const claveToken = (valor: string, tipo: string, usuarioId?: string) => sha256(tipo === 'segundo_factor' ? `${usuarioId}:${valor}` : valor)
+// Los códigos de 6 dígitos (segundo factor y cambio de contraseña) se guardan junto al usuario
+// para que no choquen entre cuentas
+const esCodigo = (tipo: string) => tipo === 'segundo_factor' || tipo === 'restablecer'
+const claveToken = (valor: string, tipo: string, usuarioId?: string) => sha256(esCodigo(tipo) ? `${usuarioId}:${valor}` : valor)
+const codigoSeisDigitos = () => String(randomInt(100000, 1000000))
+const DIAS_EQUIPO_CONFIANZA = 30
 const tokenAleatorio = (bytes = 18) => randomBytes(bytes).toString('base64url')
 const DIAS_SESION = 7
 
@@ -137,7 +141,19 @@ export function verificarCorreo(token: string) {
   })
 }
 
-export function iniciarSesion(correoIn: string, password: string) {
+/** ¿Este navegador ya pasó el segundo factor de esta cuenta en los últimos 30 días? (RNF13) */
+async function equipoDeConfianza(c: PoolClient, usuarioId: string, equipo: unknown) {
+  if (typeof equipo !== 'string' || equipo.length < 20 || equipo.length > 200) return false
+  const { rowCount } = await c.query('UPDATE equipo_confianza SET usado_en = now() WHERE token_hash = $1 AND usuario_id = $2 AND vence_en > now()', [sha256(equipo), usuarioId])
+  return (rowCount ?? 0) > 0
+}
+
+/** Olvida los equipos de confianza de estas cuentas (cambio de contraseña, de rol o bloqueo). */
+export async function olvidarEquipos(c: PoolClient, usuarioIds: string[]) {
+  if (usuarioIds.length) await c.query('DELETE FROM equipo_confianza WHERE usuario_id = ANY($1::uuid[])', [usuarioIds])
+}
+
+export function iniciarSesion(correoIn: string, password: string, equipo?: unknown) {
   return enTransaccion(async (c) => {
     const { rows } = await c.query(
       `SELECT id, correo, rol, verificado, bloqueado, intentos_fallidos,
@@ -163,7 +179,12 @@ export function iniciarSesion(correoIn: string, password: string) {
     if (!u.verificado) throw new ErrorHttp(403, 'Verifica tu correo institucional antes de iniciar sesión.')
     await c.query('UPDATE usuario SET intentos_fallidos = 0, bloqueo_temporal_hasta = NULL WHERE id = $1', [u.id])
     if (u.rol === 'admin' || u.rol === 'aliado') {
-      const codigo = String(randomInt(100000, 1000000))
+      // Segundo factor solo la primera vez en cada equipo (RNF13)
+      if (await equipoDeConfianza(c, u.id, equipo)) {
+        await auditar(c, u.id, 'Inicio de sesión desde equipo de confianza', u.id)
+        return { tipo: 'ok', sesion: await abrirSesion(c, u.id) }
+      }
+      const codigo = codigoSeisDigitos()
       await crearToken(c, u.id, 'segundo_factor', 10, codigo)
       await correo(c, u.correo, 'Código de acceso EcoSmart AI', `Tu código de segundo factor es ${codigo}. Vence en 10 minutos.`)
       return { tipo: 'segundo_factor', usuarioId: u.id }
@@ -176,11 +197,19 @@ export function iniciarSesion(correoIn: string, password: string) {
   })
 }
 
-export function verificarSegundoFactor(usuarioId: string, codigo: string) {
+export function verificarSegundoFactor(usuarioId: string, codigo: string, agente?: string) {
   return enTransaccion(async (c) => {
     await consumirToken(c, String(codigo ?? '').trim(), 'segundo_factor', String(usuarioId ?? ''))
-    await auditar(c, usuarioId, 'Inicio de sesión con segundo factor', usuarioId)
-    return { sesion: await abrirSesion(c, usuarioId) }
+    // El navegador queda recordado: no vuelve a pedir el código en 30 días
+    const equipo = tokenAleatorio(32)
+    await c.query(`INSERT INTO equipo_confianza (usuario_id, token_hash, agente, vence_en) VALUES ($1, $2, $3, now() + make_interval(days => $4))`, [
+      usuarioId,
+      sha256(equipo),
+      String(agente ?? '').slice(0, 200) || null,
+      DIAS_EQUIPO_CONFIANZA,
+    ])
+    await auditar(c, usuarioId, 'Inicio de sesión con segundo factor', usuarioId, `Equipo recordado ${DIAS_EQUIPO_CONFIANZA} días`)
+    return { sesion: await abrirSesion(c, usuarioId), equipo }
   })
 }
 
@@ -197,20 +226,25 @@ export function solicitarRestablecimiento(correoIn: string) {
   return enTransaccion(async (c) => {
     const { rows } = await c.query('SELECT id, correo FROM usuario WHERE correo = $1', [String(correoIn ?? '').trim()])
     if (rows[0]) {
-      const token = await crearToken(c, rows[0].id, 'restablecer', 60)
-      await correo(c, rows[0].correo, 'Restablece tu contraseña', 'Recibimos una solicitud para cambiar tu contraseña. El enlace vence en 60 minutos.', `#/restablecer?token=${token}`)
+      // Cambiar la contraseña pide un código de 6 dígitos enviado al correo
+      const codigo = codigoSeisDigitos()
+      await crearToken(c, rows[0].id, 'restablecer', 15, codigo)
+      await correo(c, rows[0].correo, 'Código para cambiar tu contraseña', `Tu código para cambiar la contraseña de EcoSmart AI es ${codigo}. Vence en 15 minutos.`)
     }
     return {} // respuesta genérica: no revela si el correo existe
   })
 }
 
-export function restablecerPassword(token: string, password: string) {
+export function restablecerPassword(correoIn: string, codigo: string, password: string) {
   validarPassword(password)
   return enTransaccion(async (c) => {
-    const id = await consumirToken(c, String(token ?? ''), 'restablecer')
+    const { rows } = await c.query('SELECT id FROM usuario WHERE correo = $1', [String(correoIn ?? '').trim()])
+    if (!rows[0]) throw new ErrorHttp(400, 'El enlace o código no es válido o ya fue utilizado.')
+    const id = await consumirToken(c, String(codigo ?? '').trim(), 'restablecer', rows[0].id)
     await c.query("UPDATE usuario SET password_hash = crypt($2, gen_salt('bf')), sesion_version = sesion_version + 1, intentos_fallidos = 0, bloqueo_temporal_hasta = NULL WHERE id = $1", [id, password])
     await c.query('DELETE FROM sesion WHERE usuario_id = $1', [id])
-    await auditar(c, id, 'Restablecer contraseña', id, 'Sesiones anteriores revocadas')
+    await olvidarEquipos(c, [id]) // con la contraseña nueva, cada equipo vuelve a pedir el código
+    await auditar(c, id, 'Restablecer contraseña', id, 'Sesiones y equipos de confianza revocados')
     return {}
   })
 }

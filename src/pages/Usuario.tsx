@@ -594,7 +594,7 @@ export function Perfil({ usuario }: { usuario: Usuario }) {
         </p>
         <div className="enlaces-fila">
           <a href="#/privacidad">Leer el aviso de privacidad</a>
-          <a href="#/recuperar">Cambiar contraseña</a>
+          <a href={`#/recuperar?correo=${encodeURIComponent(usuario.correo)}`}>Cambiar contraseña</a>
         </div>
       </section>
       {esUsuario && <EliminarCuenta usuario={usuario} />}

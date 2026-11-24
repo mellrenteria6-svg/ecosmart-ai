@@ -590,9 +590,29 @@ export async function verificarCorreo(token: string): Promise<Usuario> {
 
 export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario } | { tipo: 'segundo_factor'; usuarioId: string }
 
+// Equipos de confianza (RNF13): tras pasar el segundo factor, este navegador queda recordado
+// 30 días para esa cuenta. Con servidor se guarda el identificador que entrega el servidor; en
+// el modo demostración, solo hasta cuándo vale.
+const CLAVE_EQUIPOS = 'ecosmart.equipos'
+const DIAS_EQUIPO = 30
+type Equipos = Record<string, { equipo?: string; vence: number }>
+function leerEquipos(): Equipos {
+  const todos = leer<Equipos>(CLAVE_EQUIPOS, {})
+  return Object.fromEntries(Object.entries(todos).filter(([, e]) => e && e.vence > Date.now()))
+}
+function recordarEquipo(correo: string, equipo?: string) {
+  escribir(CLAVE_EQUIPOS, { ...leerEquipos(), [correo.trim().toLowerCase()]: { equipo, vence: Date.now() + DIAS_EQUIPO * 24 * HORA } })
+}
+function olvidarEquipo(correo: string) {
+  const { [correo.trim().toLowerCase()]: _quitado, ...resto } = leerEquipos()
+  void _quitado
+  escribir(CLAVE_EQUIPOS, resto)
+}
+
 export async function iniciarSesion(correoIn: string, password: string): Promise<ResultadoLogin> {
   if (MODO_SERVIDOR) {
-    const r = await llamarApi<ResultadoLogin & { sesion?: Sesion }>('/auth/login', { correo: correoIn, password })
+    const equipo = leerEquipos()[correoIn.trim().toLowerCase()]?.equipo
+    const r = await llamarApi<ResultadoLogin & { sesion?: Sesion }>('/auth/login', { correo: correoIn, password, equipo })
     if (r.sesion) {
       emitir({ sesion: r.sesion })
       await refrescarDesdeServidor()
@@ -623,7 +643,7 @@ export async function iniciarSesion(correoIn: string, password: string): Promise
     if (!u.verificado) return { error: 'Verifica tu correo institucional antes de iniciar sesión.' }
     u.intentosFallidos = 0
     u.bloqueoTemporalHasta = undefined
-    if (u.rol === 'admin' || u.rol === 'aliado') {
+    if ((u.rol === 'admin' || u.rol === 'aliado') && !leerEquipos()[u.correo]) {
       const codigo = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000))
       crearToken(d, u.id, 'segundo_factor', 10, codigo)
       enviarCorreo(d, u.correo, 'Código de acceso EcoSmart AI', `Tu código de segundo factor es ${codigo}. Vence en 10 minutos.`)
@@ -640,17 +660,20 @@ export async function iniciarSesion(correoIn: string, password: string): Promise
 
 export async function verificarSegundoFactor(usuarioId: string, codigo: string): Promise<Usuario> {
   if (MODO_SERVIDOR) {
-    const r = await llamarApi<{ sesion: Sesion }>('/auth/segundo-factor', { usuarioId, codigo })
+    const r = await llamarApi<{ sesion: Sesion; equipo?: string }>('/auth/segundo-factor', { usuarioId, codigo })
     emitir({ sesion: r.sesion })
     await refrescarDesdeServidor()
-    return snapshot.db.usuarios.find((u) => u.id === r.sesion.usuarioId)!
+    const u = snapshot.db.usuarios.find((x) => x.id === r.sesion.usuarioId)!
+    if (r.equipo) recordarEquipo(u.correo, r.equipo)
+    return u
   }
   const u = transaccion((d) => {
     consumirToken(d, codigo.trim(), 'segundo_factor', usuarioId)
     const usuario = actor(d, usuarioId)
-    auditar(d, usuario.id, 'Inicio de sesión con segundo factor', 'USUARIO', usuario.id, '')
+    auditar(d, usuario.id, 'Inicio de sesión con segundo factor', 'USUARIO', usuario.id, `Equipo recordado ${DIAS_EQUIPO} días`)
     return usuario
   })
+  recordarEquipo(u.correo)
   emitir({ sesion: { usuarioId: u.id, sesionVersion: u.sesionVersion, creadaEn: Date.now() } })
   return u
 }
@@ -678,31 +701,35 @@ export function solicitarRestablecimiento(correoIn: string) {
   transaccion((d) => {
     const u = d.usuarios.find((x) => x.correo === correo)
     if (!u) return // respuesta genérica: no revela si el correo existe
-    const token = crearToken(d, u.id, 'restablecer', 60)
-    enviarCorreo(d, u.correo, 'Restablece tu contraseña', 'Recibimos una solicitud para cambiar tu contraseña. El enlace vence en 60 minutos.', `#/restablecer?token=${token}`)
+    // Cambiar la contraseña pide un código de 6 dígitos enviado al correo
+    const codigo = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000))
+    crearToken(d, u.id, 'restablecer', 15, codigo)
+    enviarCorreo(d, u.correo, 'Código para cambiar tu contraseña', `Tu código para cambiar la contraseña de EcoSmart AI es ${codigo}. Vence en 15 minutos.`)
   })
 }
 
-export async function restablecerPassword(token: string, password: string) {
+export async function restablecerPassword(correoIn: string, codigo: string, password: string) {
   validarPassword(password)
+  const correo = correoIn.trim().toLowerCase()
   if (MODO_SERVIDOR) {
-    await llamarApi('/auth/restablecer', { token, password })
+    await llamarApi('/auth/restablecer', { correo, codigo: codigo.trim(), password })
+    olvidarEquipo(correo)
     emitir({ sesion: null })
     return
   }
-  const t = snapshot.db.tokens.find((x) => x.token === token && x.tipo === 'restablecer')
-  const u = t && snapshot.db.usuarios.find((x) => x.id === t.usuarioId)
-  if (!t || !u) throw new ApiError('El enlace no es válido.')
+  const u = snapshot.db.usuarios.find((x) => x.correo === correo)
+  if (!u) throw new ApiError('El enlace o código no es válido o ya fue utilizado.')
   const hash = await hashPassword(u.correo, password)
   transaccion((d) => {
-    consumirToken(d, token, 'restablecer')
+    consumirToken(d, codigo.trim(), 'restablecer', u.id)
     const usuario = actor(d, u.id)
     usuario.passwordHash = hash
     usuario.sesionVersion += 1
     usuario.intentosFallidos = 0
     usuario.bloqueoTemporalHasta = undefined
-    auditar(d, usuario.id, 'Restablecer contraseña', 'USUARIO', usuario.id, 'Sesiones anteriores revocadas')
+    auditar(d, usuario.id, 'Restablecer contraseña', 'USUARIO', usuario.id, 'Sesiones y equipos de confianza revocados')
   })
+  olvidarEquipo(correo)
   if (snapshot.sesion?.usuarioId === u.id) emitir({ sesion: null })
 }
 

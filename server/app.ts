@@ -19,7 +19,7 @@ import * as auth from './auth'
 import * as push from './push'
 import { ErrorHttp } from './auth'
 import { datosReciclaje } from './validacion'
-import { avisarCartero, correoActivo, esCorreoDeDemostracion } from './correo'
+import { avisarCartero, correoActivo, destinoDemostracion, esCorreoDeDemostracion } from './correo'
 
 const BANDEJA_DEMO = process.env.BANDEJA_DEMO !== '0' // bandeja de correo simulada (solo para demostración)
 
@@ -215,6 +215,15 @@ async function ejecutarLote(lote: Trabajo[]) {
     }
     const despues = motorServidor.db()
     await guardarCambios(c, antes, despues)
+    // RNF13: un cambio de rol o un bloqueo revoca los equipos de confianza de esa cuenta
+    if (despues.usuarios !== antes.usuarios) {
+      const previos = new Map(antes.usuarios.map((u) => [u.id, u]))
+      const afectados = despues.usuarios.filter((u) => {
+        const p = previos.get(u.id)
+        return p && (p.rol !== u.rol || (!p.bloqueado && u.bloqueado))
+      })
+      await auth.olvidarEquipos(c, afectados.map((u) => u.id))
+    }
     await c.query('COMMIT')
     recordar(despues)
     // RF23: las notificaciones nuevas salen también como push (sin hacer esperar la respuesta)
@@ -277,7 +286,7 @@ const api = express.Router()
 
 api.get('/salud', async (_req, res) => {
   const { rows } = await pool.query('SELECT version() AS v')
-  res.json({ ok: true, postgres: String(rows[0].v).split(',')[0], correoReal: correoActivo() })
+  res.json({ ok: true, postgres: String(rows[0].v).split(',')[0], correoReal: correoActivo(), correoDemoReal: correoActivo() && destinoDemostracion() !== null })
 })
 
 // Datos de la página: lectura sin bloqueo desde la copia en memoria
@@ -393,10 +402,10 @@ rutasAuth.use((req, res, next) => (req.path === '/logout' ? next() : limiteAuth(
 rutasAuth.post('/registro', async (req, res) => void res.json(await auth.registrar(req.body)))
 rutasAuth.post('/reenviar', async (req, res) => void res.json(await auth.reenviarVerificacion(req.body?.correo)))
 rutasAuth.post('/verificar', async (req, res) => void res.json(await auth.verificarCorreo(req.body?.token)))
-rutasAuth.post('/login', async (req, res) => void res.json(await auth.iniciarSesion(req.body?.correo, req.body?.password)))
-rutasAuth.post('/segundo-factor', async (req, res) => void res.json(await auth.verificarSegundoFactor(req.body?.usuarioId, req.body?.codigo)))
+rutasAuth.post('/login', async (req, res) => void res.json(await auth.iniciarSesion(req.body?.correo, req.body?.password, req.body?.equipo)))
+rutasAuth.post('/segundo-factor', async (req, res) => void res.json(await auth.verificarSegundoFactor(req.body?.usuarioId, req.body?.codigo, req.headers['user-agent'])))
 rutasAuth.post('/recuperar', async (req, res) => void res.json(await auth.solicitarRestablecimiento(req.body?.correo)))
-rutasAuth.post('/restablecer', async (req, res) => void res.json(await auth.restablecerPassword(req.body?.token, req.body?.password)))
+rutasAuth.post('/restablecer', async (req, res) => void res.json(await auth.restablecerPassword(req.body?.correo, req.body?.codigo, req.body?.password)))
 rutasAuth.post('/logout', async (req, res) => {
   const id = await auth.usuarioDeToken(tokenDe(req))
   if (id) await auth.cerrarSesion(id)
@@ -409,7 +418,9 @@ api.use('/auth', rutasAuth)
 if (BANDEJA_DEMO)
   api.get('/correos', async (_req, res) => {
     const correos = await auth.bandejaSimulada()
-    res.json({ correos: correoActivo() ? correos.filter((c: { para: string }) => esCorreoDeDemostracion(c.para)) : correos })
+    // Si además los de demostración van al buzón del proyecto, la bandeja queda vacía
+    const visibles = !correoActivo() ? correos : destinoDemostracion() ? [] : correos.filter((c: { para: string }) => esCorreoDeDemostracion(c.para))
+    res.json({ correos: visibles })
   })
 
 // Las respuestas de la API son personales: no se guardan en cachés intermedias ni se muestran dentro de otra página

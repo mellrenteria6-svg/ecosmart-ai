@@ -7,7 +7,7 @@ import { Vacio } from './components/ui'
 import { navegar, useRuta } from './lib/router'
 import { vigilarAvisosLocales } from './lib/push'
 import { Portada } from './pages/Portada'
-import { BandejaCorreo, Ingresar, Recuperar, Registro, Restablecer, Verificar } from './pages/Acceso'
+import { BandejaCorreo, Ingresar, Recuperar, Registro, Verificar } from './pages/Acceso'
 import { AvisoPrivacidad, Catalogo, Historial, InicioUsuario, MisCanjes, Notificaciones, Perfil, PuntosCampus } from './pages/Usuario'
 import { Reciclar } from './pages/Reciclar'
 import { LotesCerrados, PendientesPunto, PuntosRecolector, RevisionIndividual } from './pages/Recolector'
@@ -121,7 +121,8 @@ export default function App() {
     case '/recuperar':
       return <Recuperar />
     case '/restablecer':
-      return <Restablecer />
+      // Los enlaces antiguos de restablecimiento llevan a pedir un código
+      return <Redirigir a="/recuperar" />
     case '/correo':
       return <BandejaCorreo />
     case '/privacidad':
