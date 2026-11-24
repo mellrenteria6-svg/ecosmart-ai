@@ -34,6 +34,9 @@ const remitente = () => process.env.CORREO_REMITENTE ?? `EcoSmart AI <${process.
 /** Dominios sin buzón real (cuentas de demostración): sus correos quedan solo en la bandeja simulada. */
 const dominiosSinEnvio = () => (process.env.CORREO_NO_ENVIAR ?? 'universidad.edu.ec').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
 
+/** ¿Es una cuenta de demostración (sin buzón real)? */
+export const esCorreoDeDemostracion = (para: string) => dominiosSinEnvio().some((d) => para.toLowerCase().endsWith('@' + d))
+
 /** Los enlaces se guardan como ruta de la app ("#/verificar?token=…"); en el correo van completos. */
 export function enlaceCompleto(enlace: string) {
   if (/^https?:\/\//.test(enlace)) return enlace
@@ -82,9 +85,8 @@ async function vuelta(): Promise<number> {
          ORDER BY creado_en LIMIT $3 FOR UPDATE SKIP LOCKED`,
         [MAX_INTENTOS, ANTIGUEDAD_MAXIMA, POR_VUELTA],
       )
-      const sinEnvio = dominiosSinEnvio()
       for (const fila of rows) {
-        if (sinEnvio.some((d) => fila.para.toLowerCase().endsWith('@' + d))) {
+        if (esCorreoDeDemostracion(fila.para)) {
           await c.query("UPDATE correo_simulado SET enviado_en = now(), error = 'Cuenta de demostración: solo bandeja simulada' WHERE id = $1", [fila.id])
           continue
         }

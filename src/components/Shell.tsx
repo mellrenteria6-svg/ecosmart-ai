@@ -5,6 +5,7 @@ import { alternarOfflineSimulado, cerrarSesion, useStore } from '../data/store'
 import type { Rol, Usuario } from '../data/types'
 import { ETIQUETA_ROL } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
+import { useCorreoReal } from '../lib/correo-real'
 
 const MENU: Record<Rol, { href: string; texto: string }[]> = {
   usuario: [
@@ -74,6 +75,7 @@ export function IndicadorConexion() {
 export function Shell({ usuario, children }: { usuario: Usuario; children: ReactNode }) {
   const s = useStore()
   const ruta = useRuta()
+  const correoReal = useCorreoReal()
   const [menuAbierto, setMenuAbierto] = useState(false)
   // Escape cierra el menú del celular (RNF08)
   useEffect(() => {
@@ -157,7 +159,7 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
         <span>EcoSmart AI · Prototipo Fase 1</span>
         <span className="shell-footer-links">
           <a href="#/privacidad">Aviso de privacidad</a>
-          <a href="#/correo">Bandeja de correo simulada</a>
+          {!correoReal && <a href="#/correo">Bandeja de correo simulada</a>}
         </span>
       </footer>
     </div>

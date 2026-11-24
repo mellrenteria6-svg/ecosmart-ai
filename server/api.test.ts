@@ -359,6 +359,13 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
     expect((await fila('viejo@espol.edu.ec')).enviado_en).toBeNull()
   })
 
+  it('CP-RNF04: con correo real, la bandeja simulada solo muestra cuentas de demostración', async () => {
+    const r = await api('/correos')
+    expect(r.correos.length).toBeGreaterThan(0)
+    expect(r.correos.every((c: { para: string }) => c.para.endsWith('@universidad.edu.ec'))).toBe(true)
+    expect((await api('/salud')).correoReal).toBe(true)
+  })
+
   it('escapa el texto en la versión HTML del correo', () => {
     const m = correo.armarCorreo({ para: 'a@espol.edu.ec', asunto: 'x', cuerpo: '<script>alert(1)</script>', enlace: null })
     expect(m.html).not.toContain('<script>')

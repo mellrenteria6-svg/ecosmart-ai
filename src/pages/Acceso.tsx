@@ -18,6 +18,7 @@ import { Marca } from '../components/Shell'
 import { Alerta, Campo, EntradaContrasena, useAccion } from '../components/ui'
 import { hace } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
+import { esCorreoDemo, useCorreoReal } from '../lib/correo-real'
 
 const FACULTADES = ['Ingeniería', 'Ciencias Económicas', 'Ciencias de la Salud', 'Arquitectura y Diseño', 'Ciencias Sociales', 'Educación', 'Personal administrativo']
 
@@ -63,6 +64,9 @@ export function Ingresar() {
   const cuentaEliminada = useRuta().query.get('eliminada') === '1'
   const [codigo, setCodigo] = useState('')
   const { error, cargando, ejecutar } = useAccion()
+  const correoReal = useCorreoReal()
+  // Las cuentas de demostración no tienen buzón real: su código sigue en la bandeja simulada
+  const usaBandeja = !correoReal || esCorreoDemo(correo)
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
@@ -83,7 +87,10 @@ export function Ingresar() {
       <MarcoAcceso titulo="Verificación en dos pasos" subtitulo="Las cuentas de administración usan un segundo factor. Enviamos un código de 6 dígitos a tu correo.">
         <form onSubmit={enviarCodigo} className="form">
           {error && <Alerta tono="error">{error}</Alerta>}
-          <Campo etiqueta="Código de verificación" ayuda={<>Revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</>}>
+          <Campo
+            etiqueta="Código de verificación"
+            ayuda={usaBandeja ? <>Cuenta de demostración: revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</> : 'Revisa tu bandeja de entrada (y la carpeta de Spam). Vence en 10 minutos.'}
+          >
             {(id, d) => <input id={id} aria-describedby={d} className="input input-codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} ref={enfocarAlMontar()} required />}
           </Campo>
           <button className="btn btn-tinta btn-bloque" disabled={cargando || codigo.length !== 6}>Verificar y entrar</button>
@@ -155,6 +162,8 @@ export function Registro() {
   const detectada = f.correo.includes('@') ? institucionPorCorreo(db, f.correo) : undefined
   const dominioEscrito = f.correo.split('@')[1] ?? ''
 
+  const correoReal = useCorreoReal()
+
   async function enviar(e: FormEvent) {
     e.preventDefault()
     const u = await ejecutar(() => registrar(f))
@@ -164,11 +173,15 @@ export function Registro() {
   if (listo) {
     return (
       <MarcoAcceso titulo="Revisa tu correo" subtitulo={<>Enviamos un enlace de verificación a <b>{listo}</b>. Tu cuenta no podrá reciclar hasta que lo abras.</>}>
-        <Alerta tono="info" titulo="Prototipo">
-          Los correos se muestran en la <a href="#/correo">bandeja de correo simulada</a>.
-        </Alerta>
+        {correoReal ? (
+          <Alerta tono="info">Llega desde <b>EcoSmart AI</b> en unos segundos. Si no lo ves, revisa la carpeta de Spam o Correo no deseado.</Alerta>
+        ) : (
+          <Alerta tono="info" titulo="Prototipo">
+            Los correos se muestran en la <a href="#/correo">bandeja de correo simulada</a>.
+          </Alerta>
+        )}
         <div className="form">
-          <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>
+          {!correoReal && <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>}
           <button type="button" className="btn btn-fantasma btn-bloque" onClick={() => reenviarVerificacion(listo)}>Reenviar enlace</button>
         </div>
       </MarcoAcceso>
@@ -248,14 +261,17 @@ export function Verificar() {
 export function Recuperar() {
   const [correo, setCorreo] = useState('')
   const [enviado, setEnviado] = useState(false)
+  const correoReal = useCorreoReal()
   return (
     <MarcoAcceso titulo="Recupera tu acceso" subtitulo="Te enviaremos un enlace para crear una nueva contraseña.">
       {enviado ? (
         <>
-          <Alerta tono="ok">Si el correo está registrado, recibirás un enlace en unos minutos. El enlace vence en 60 minutos.</Alerta>
-          <div className="form">
-            <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>
-          </div>
+          <Alerta tono="ok">Si el correo está registrado, recibirás un enlace en unos minutos{correoReal ? ' (revisa también Spam)' : ''}. El enlace vence en 60 minutos.</Alerta>
+          {(!correoReal || esCorreoDemo(correo)) && (
+            <div className="form">
+              <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>
+            </div>
+          )}
         </>
       ) : (
         <form
@@ -321,6 +337,7 @@ export function Restablecer() {
 
 export function BandejaCorreo() {
   const { db } = useStore()
+  const correoReal = useCorreoReal()
   const [remotos, setRemotos] = useState<typeof db.correos | null>(null)
   useEffect(() => {
     if (!MODO_SERVIDOR) return
@@ -342,7 +359,11 @@ export function BandejaCorreo() {
       </header>
       <div className="bandeja-cuerpo">
         <h1>Bandeja de correo simulada</h1>
-        <p className="encabezado-desc">El prototipo no envía correos reales. Aquí aparecen los enlaces de verificación, recuperación y códigos de segundo factor.</p>
+        <p className="encabezado-desc">
+          {correoReal
+            ? 'Los correos ya se envían de verdad al buzón de cada persona. Aquí solo aparecen los de las cuentas de demostración (@universidad.edu.ec), que no tienen buzón real.'
+            : 'El prototipo no envía correos reales. Aquí aparecen los enlaces de verificación, recuperación y códigos de segundo factor.'}
+        </p>
         {correos.length === 0 ? (
           <p className="vacio-texto">Todavía no hay correos. Crea una cuenta, recupera una contraseña o ingresa como administrador.</p>
         ) : (

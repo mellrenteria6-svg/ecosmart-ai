@@ -19,7 +19,7 @@ import * as auth from './auth'
 import * as push from './push'
 import { ErrorHttp } from './auth'
 import { datosReciclaje } from './validacion'
-import { avisarCartero, correoActivo } from './correo'
+import { avisarCartero, correoActivo, esCorreoDeDemostracion } from './correo'
 
 const BANDEJA_DEMO = process.env.BANDEJA_DEMO !== '0' // bandeja de correo simulada (solo para demostración)
 
@@ -404,7 +404,13 @@ rutasAuth.post('/logout', async (req, res) => {
 })
 api.use('/auth', rutasAuth)
 
-if (BANDEJA_DEMO) api.get('/correos', async (_req, res) => void res.json({ correos: await auth.bandejaSimulada() }))
+// Bandeja de demostración. Con correo real activo solo muestra los correos de las cuentas de
+// demostración (sin buzón real): los de personas reales llevan códigos y enlaces personales.
+if (BANDEJA_DEMO)
+  api.get('/correos', async (_req, res) => {
+    const correos = await auth.bandejaSimulada()
+    res.json({ correos: correoActivo() ? correos.filter((c: { para: string }) => esCorreoDeDemostracion(c.para)) : correos })
+  })
 
 // Las respuestas de la API son personales: no se guardan en cachés intermedias ni se muestran dentro de otra página
 app.use('/api', (_req, res, next) => {
