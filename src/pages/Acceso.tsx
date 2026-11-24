@@ -212,7 +212,7 @@ export function Registro() {
       titulo={<>Crea tu cuenta <em>verde</em>.</>}
       subtitulo={
         invitados
-          ? `Usa cualquier correo. Si es el de tu universidad (${listaUniversidades}), tus puntos también suman para ella en el EcoRanking.`
+          ? 'Regístrate y empieza a sumar EcoPoints por reciclar.'
           : `Usa el correo de tu universidad: ${listaUniversidades}.`
       }
     >
