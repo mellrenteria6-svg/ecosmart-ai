@@ -40,3 +40,6 @@ ia/evaluacion/*/
 
 # Registro del monitoreo de disponibilidad (RNF06)
 monitoreo/
+
+# Fotos de práctica para entrenar la IA (mismas razones de privacidad)
+ia/entrenamiento/*/

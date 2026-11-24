@@ -95,7 +95,8 @@ docs/           Accesibilidad, continuidad y capacidad, y evidencias
 ### IA (RNF11)
 
 ```bash
-npm run ia:evaluar      # F1 macro, recall por categoría y matriz de confusión sobre ia/evaluacion/
+npm run ia:entrenar     # aprende de las fotos de práctica (ia/entrenamiento/) y estima la calidad
+npm run ia:evaluar      # examen: F1 macro, recall por categoría y matriz de confusión sobre ia/evaluacion/
 npm run ia:embeddings   # regenera las descripciones de cada categoría (al cambiar de versión)
 ```
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import EMBEDDINGS from './ia-embeddings.json'
 import { VERSION_MODELO, normalizar, puntuar } from './ia-puntaje'
 import { calcularMetricas, incumplimientosRnf11 } from './ia-metricas'
+import { entrenarSonda, logitsSonda } from './ia-sonda'
 
 describe('Puntaje zero-shot (RF09)', () => {
   const clases = { a: [1, 0, 0], b: [0, 1, 0], ninguno: [0, 0, 1] }
@@ -75,5 +76,42 @@ describe('Métricas de la evaluación formal (RNF11)', () => {
   it('CP-RNF11: rechaza si una categoría no llega al recall o no tiene fotos', () => {
     const peor = calcularMetricas([...pares, { real: 'B', predicha: 'A' }], ['A', 'B', 'C'])
     expect(incumplimientosRnf11(peor)).toEqual(expect.arrayContaining([expect.stringMatching(/^B: recall/), 'C: sin fotos en el conjunto de prueba']))
+  })
+})
+
+describe('Sonda aprendida de fotos (RNF11, versión 1.1)', () => {
+  // Fotos de juguete en 3 dimensiones: cada clase apunta a un eje distinto
+  const ejemplos = [
+    { v: [1, 0.1, 0], clase: 'a' },
+    { v: [0.9, 0, 0.1], clase: 'a' },
+    { v: [0.1, 1, 0], clase: 'b' },
+    { v: [0, 0.9, 0.2], clase: 'b' },
+  ].map((e) => ({ ...e, v: normalizar(e.v) }))
+
+  it('aprende a separar las clases de las fotos de práctica', () => {
+    const s = entrenarSonda(ejemplos, ['a', 'b'])
+    const [la, lb] = logitsSonda(s, normalizar([1, 0, 0]))
+    expect(la).toBeGreaterThan(lb)
+  })
+
+  it('es determinista: las mismas fotos dan el mismo modelo', () => {
+    expect(entrenarSonda(ejemplos, ['a', 'b'])).toEqual(entrenarSonda(ejemplos, ['a', 'b']))
+  })
+
+  it('corrige al texto cuando las fotos muestran otra cosa, sin cambiar el aviso de "otra cosa"', () => {
+    // El texto se inclina levemente por "b", pero las fotos dicen claramente "a"
+    const clases = { a: normalizar([0.6, 0.8, 0]), b: normalizar([0.65, 0.75, 0]), ninguno: [0, 0, 1] }
+    const foto = normalizar([1, 0.05, 0])
+    expect(puntuar(foto, clases, ['a', 'b']).reales[0].categoriaId).toBe('b')
+    const conSonda = puntuar(foto, clases, ['a', 'b'], entrenarSonda(ejemplos, ['a', 'b']))
+    expect(conSonda.reales[0].categoriaId).toBe('a')
+    expect(conSonda.noReconocido).toBe(false)
+  })
+
+  it('CP-RNF11: el modelo publicado incluye lo aprendido para las 6 categorías', () => {
+    const sonda = (EMBEDDINGS as { sonda?: { clases: string[]; W: number[][]; fotos: number } }).sonda
+    expect(sonda?.clases).toEqual(['cat-pet', 'cat-papel', 'cat-vidrio', 'cat-lata', 'cat-tetra', 'cat-plastico'])
+    expect(sonda?.W.every((w) => w.length === 512)).toBe(true)
+    expect(sonda?.fotos).toBeGreaterThanOrEqual(30)
   })
 })

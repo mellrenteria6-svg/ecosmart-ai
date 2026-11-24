@@ -18,7 +18,8 @@
     "verificar": "npm run lint && npm run typecheck:servidor && npm test && npm run build",
     "db:migrar": "tsx --env-file=server/.env server/migrar.ts",
     "ia:embeddings": "tsx scripts/generar-embeddings-ia.ts",
-    "ia:evaluar": "tsx scripts/evaluar-ia.ts"
+    "ia:evaluar": "tsx scripts/evaluar-ia.ts",
+    "ia:entrenar": "tsx scripts/entrenar-ia.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",

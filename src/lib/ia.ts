@@ -7,6 +7,7 @@ import EMBEDDINGS from './ia-embeddings.json'
 import type { CategoriaResiduo } from '../data/types'
 import { clasificarPorColor } from './imagen'
 import { VERSION_MODELO, puntuar } from './ia-puntaje'
+import type { Sonda } from './ia-sonda'
 import type { FotoProcesada } from './imagen'
 
 export { VERSION_MODELO }
@@ -102,6 +103,8 @@ function embeddingDe(imagen: string, limiteMs: number) {
 }
 
 const CLASES = EMBEDDINGS.clases as Record<string, number[]>
+// Lo aprendido de fotos reales (npm run ia:entrenar); sin ella se usa solo la comparación con texto
+const SONDA = ((EMBEDDINGS as { sonda?: Sonda }).sonda ?? null) as Sonda | null
 
 export async function clasificar(foto: FotoProcesada, categorias: CategoriaResiduo[]): Promise<ResultadoIa> {
   const t0 = performance.now()
@@ -112,14 +115,14 @@ export async function clasificar(foto: FotoProcesada, categorias: CategoriaResid
     // La primera vez incluye la descarga del modelo; después responde en < 1 s
     const e = await embeddingDe(foto.dataUrl, estado.fase === 'listo' ? 15000 : 180000)
     // Mismo cálculo que mide la evaluación formal (scripts/evaluar-ia.ts)
-    const { reales, ninguno } = puntuar(e, CLASES, conocidas.map((c) => c.id))
+    const { reales, noReconocido } = puntuar(e, CLASES, conocidas.map((c) => c.id), SONDA)
     const r2 = (n: number) => Math.round(n * 100) / 100
     return {
       categoriaId: reales[0].categoriaId,
       confianza: r2(reales[0].confianza),
       version: VERSION_MODELO,
       alternativas: reales.slice(1, 3).map((a) => ({ ...a, confianza: r2(a.confianza) })),
-      noReconocido: ninguno > reales[0].confianza,
+      noReconocido,
       respaldo: false,
       ms: Math.round(performance.now() - t0),
     }

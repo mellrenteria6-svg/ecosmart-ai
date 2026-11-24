@@ -2,11 +2,28 @@
 
 RNF11 pide que el clasificador, **en un conjunto de prueba separado**, logre **F1 macro ≥ 85 %** y
 **recall ≥ 80 % en cada categoría**, y que cada inferencia registre la versión del modelo
-(cada reciclaje guarda `modelo_version`, hoy `clip-vit-b32-q8-zs-1.0`).
+(cada reciclaje guarda `modelo_version`, hoy `clip-vit-b32-q8-sonda-1.1`).
+
+## Dos carpetas, dos usos
+
+| Carpeta | Para qué | Comando |
+|---|---|---|
+| `ia/entrenamiento/` | **Práctica**: la IA aprende de estas fotos cómo se ve cada material | `npm.cmd run ia:entrenar` |
+| `ia/evaluacion/` | **Examen**: fotos nuevas que la IA nunca vio; solo se usan para medir | `npm.cmd run ia:evaluar` |
+
+Nunca pongas la misma foto en las dos: si la IA aprende de una foto y luego la evalúa con esa
+misma, el resultado no vale (sería darle las respuestas del examen).
+
+### Versión 1.1 (24 de noviembre de 2026)
+
+Se entrenó con 68 fotos de práctica (las primeras que juntó el equipo). Estimación dejando una
+foto fuera cada vez: **F1 macro 66,3 % (1.0) → 76,4 % (1.1)**; latas 58 % → 83 %, vidrio 30 % → 50 %.
+Detalle en `docs/evidencias/entrenamiento-ia.json`. Muchas de esas fotos tenían varios residuos
+mezclados o eran de internet; con fotos propias de un solo residuo, la IA debería mejorar más.
 
 ## Cómo armar el conjunto
 
-Una carpeta por categoría, con el identificador exacto:
+Una carpeta por categoría, con el identificador exacto (igual en `ia/entrenamiento/`):
 
 ```
 ia/evaluacion/

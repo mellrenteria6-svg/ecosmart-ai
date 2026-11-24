@@ -1,0 +1,169 @@
+{
+  "fecha": "2026-11-24T14:57:30.072Z",
+  "version": "clip-vit-b32-q8-sonda-1.1",
+  "nota": "Estimación con las fotos de práctica dejando una fuera. No es la evaluación formal de RNF11, que requiere fotos nuevas en ia/evaluacion.",
+  "fotos": {
+    "usadas": 68,
+    "omitidas": [
+      "cat-pet/WhatsApp Image 2026-11-23 at 1.15.28 PM (1).jpeg",
+      "cat-pet/WhatsApp Image 2026-11-23 at 12.11.47 PM (2).jpeg",
+      "cat-lata/WhatsApp Image 2026-11-23 at 1.15.28 PM (1).jpeg",
+      "cat-plastico/WhatsApp Image 2026-11-23 at 12.11.47 PM (2).jpeg"
+    ],
+    "huellaSha256": "3250a38509b7be54e67c56840b318bcc70721608001072b197f5d05e5ca1c63c"
+  },
+  "soloTexto": {
+    "f1Macro": 0.7338,
+    "recall": {
+      "cat-pet": 0.75,
+      "cat-papel": 0.9,
+      "cat-vidrio": 0.4,
+      "cat-lata": 0.5833,
+      "cat-tetra": 0.9167,
+      "cat-plastico": 0.8333
+    }
+  },
+  "textoMasFotos": {
+    "f1Macro": 0.7636,
+    "recall": {
+      "cat-pet": 0.6667,
+      "cat-papel": 0.9,
+      "cat-vidrio": 0.5,
+      "cat-lata": 0.8333,
+      "cat-tetra": 0.9167,
+      "cat-plastico": 0.75
+    },
+    "matrizConfusion": {
+      "cat-pet": {
+        "cat-pet": 8,
+        "cat-papel": 0,
+        "cat-vidrio": 2,
+        "cat-lata": 1,
+        "cat-tetra": 0,
+        "cat-plastico": 1
+      },
+      "cat-papel": {
+        "cat-pet": 0,
+        "cat-papel": 9,
+        "cat-vidrio": 0,
+        "cat-lata": 0,
+        "cat-tetra": 0,
+        "cat-plastico": 1
+      },
+      "cat-vidrio": {
+        "cat-pet": 4,
+        "cat-papel": 0,
+        "cat-vidrio": 5,
+        "cat-lata": 0,
+        "cat-tetra": 0,
+        "cat-plastico": 1
+      },
+      "cat-lata": {
+        "cat-pet": 1,
+        "cat-papel": 0,
+        "cat-vidrio": 1,
+        "cat-lata": 10,
+        "cat-tetra": 0,
+        "cat-plastico": 0
+      },
+      "cat-tetra": {
+        "cat-pet": 0,
+        "cat-papel": 1,
+        "cat-vidrio": 0,
+        "cat-lata": 0,
+        "cat-tetra": 11,
+        "cat-plastico": 0
+      },
+      "cat-plastico": {
+        "cat-pet": 2,
+        "cat-papel": 1,
+        "cat-vidrio": 0,
+        "cat-lata": 0,
+        "cat-tetra": 0,
+        "cat-plastico": 9
+      }
+    }
+  },
+  "errores": [
+    {
+      "real": "cat-pet",
+      "predicha": "cat-plastico",
+      "archivo": "cat-pet/678.jpg"
+    },
+    {
+      "real": "cat-pet",
+      "predicha": "cat-vidrio",
+      "archivo": "cat-pet/fgf.jpg"
+    },
+    {
+      "real": "cat-pet",
+      "predicha": "cat-lata",
+      "archivo": "cat-pet/gfd.jpg"
+    },
+    {
+      "real": "cat-pet",
+      "predicha": "cat-vidrio",
+      "archivo": "cat-pet/images.jpg"
+    },
+    {
+      "real": "cat-papel",
+      "predicha": "cat-plastico",
+      "archivo": "cat-papel/WhatsApp Image 2026-11-23 at 12.11.47 PM (3).jpeg"
+    },
+    {
+      "real": "cat-vidrio",
+      "predicha": "cat-pet",
+      "archivo": "cat-vidrio/70bc89db27798bcb82f2639e766589d2.jpg"
+    },
+    {
+      "real": "cat-vidrio",
+      "predicha": "cat-pet",
+      "archivo": "cat-vidrio/images1.jpg"
+    },
+    {
+      "real": "cat-vidrio",
+      "predicha": "cat-plastico",
+      "archivo": "cat-vidrio/images2.jpg"
+    },
+    {
+      "real": "cat-vidrio",
+      "predicha": "cat-pet",
+      "archivo": "cat-vidrio/imagess.jpg"
+    },
+    {
+      "real": "cat-vidrio",
+      "predicha": "cat-pet",
+      "archivo": "cat-vidrio/istockphoto-509118539-612x612.jpg"
+    },
+    {
+      "real": "cat-lata",
+      "predicha": "cat-vidrio",
+      "archivo": "cat-lata/123.jpg"
+    },
+    {
+      "real": "cat-lata",
+      "predicha": "cat-pet",
+      "archivo": "cat-lata/r6.webp"
+    },
+    {
+      "real": "cat-tetra",
+      "predicha": "cat-papel",
+      "archivo": "cat-tetra/images.jpg"
+    },
+    {
+      "real": "cat-plastico",
+      "predicha": "cat-pet",
+      "archivo": "cat-plastico/11.jpg"
+    },
+    {
+      "real": "cat-plastico",
+      "predicha": "cat-papel",
+      "archivo": "cat-plastico/WhatsApp Image 2026-11-23 at 1.15.29 PM.jpeg"
+    },
+    {
+      "real": "cat-plastico",
+      "predicha": "cat-pet",
+      "archivo": "cat-plastico/jiji.jpg"
+    }
+  ]
+}
