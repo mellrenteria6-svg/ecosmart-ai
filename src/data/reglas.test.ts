@@ -16,6 +16,8 @@ import {
   guardarInstitucion,
   guardarRecompensa,
   institucionPorCorreo,
+  institucionParaRegistro,
+  correoValido,
   motorServidor,
   procesarVencimientos,
   puntoPorCodigo,
@@ -302,6 +304,17 @@ describe('Universidades (RN01 ajustada)', () => {
     expect(institucionPorCorreo(db(), 'luis@UEES.edu.ec')?.siglas).toBe('UEES')
     expect(institucionPorCorreo(db(), 'x@gmail.com')).toBeUndefined()
     expect(institucionPorCorreo(db(), 'x@falso-espol.edu.ec')).toBeUndefined()
+  })
+
+  it('CP-RF01: un correo de otro dominio queda en Invitados; desactivarla vuelve a exigir universidad', async () => {
+    expect(institucionParaRegistro(db(), 'ana@espol.edu.ec')?.siglas).toBe('ESPOL')
+    expect(institucionParaRegistro(db(), 'x@gmail.com')?.id).toBe('inst-invitados')
+    expect(correoValido('x@gmail.com')).toBe(true)
+    expect(correoValido('sin-arroba')).toBe(false)
+    expect(correoValido('a@b')).toBe(false)
+    const inv = db().instituciones.find((i) => i.id === 'inst-invitados')!
+    await guardarInstitucion(ADMIN, { id: inv.id, nombre: inv.nombre, siglas: inv.siglas, dominios: [], activa: false })
+    expect(institucionParaRegistro(db(), 'x@gmail.com')).toBeUndefined()
   })
 
   it('un dominio pertenece a una sola universidad', async () => {

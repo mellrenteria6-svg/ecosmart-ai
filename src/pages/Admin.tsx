@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
+  INSTITUCION_INVITADOS,
   actualizarCategoria,
   actualizarConfig,
   buscarCanje,
@@ -997,9 +998,13 @@ export function AdminInstituciones({ usuario }: { usuario: Usuario }) {
           >
             <Campo etiqueta="Nombre">{(id) => <input id={id} className="input" value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} placeholder="Escuela Superior Politécnica del Litoral" required />}</Campo>
             <Campo etiqueta="Siglas">{(id) => <input id={id} className="input" value={ed.siglas} onChange={(e) => setEd({ ...ed, siglas: e.target.value })} placeholder="ESPOL" required />}</Campo>
-            <Campo etiqueta="Dominios de correo" ayuda="Separa con comas. Incluye el de estudiantes y el de personal si son distintos, por ejemplo: ucsg.edu.ec, cu.ucsg.edu.ec">
-              {(id, d) => <input id={id} aria-describedby={d} className="input input-mono" value={ed.dominiosTexto} onChange={(e) => setEd({ ...ed, dominiosTexto: e.target.value })} placeholder="espol.edu.ec" required />}
-            </Campo>
+            {ed.id === INSTITUCION_INVITADOS ? (
+              <p className="nota">Invitados no tiene dominios: recibe a quien se registra con un correo que no es de ninguna universidad. Desactívala para aceptar solo correos universitarios.</p>
+            ) : (
+              <Campo etiqueta="Dominios de correo" ayuda="Separa con comas. Incluye el de estudiantes y el de personal si son distintos, por ejemplo: ucsg.edu.ec, cu.ucsg.edu.ec">
+                {(id, d) => <input id={id} aria-describedby={d} className="input input-mono" value={ed.dominiosTexto} onChange={(e) => setEd({ ...ed, dominiosTexto: e.target.value })} placeholder="espol.edu.ec" required />}
+              </Campo>
+            )}
             <label className="check">
               <input type="checkbox" checked={ed.activa} onChange={(e) => setEd({ ...ed, activa: e.target.checked })} />
               <span>Activa: acepta nuevos registros</span>

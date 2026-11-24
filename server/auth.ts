@@ -103,7 +103,9 @@ export function registrar(d: { nombre: string; correo: string; facultad: string;
   return enTransaccion(async (c) => {
     const correoN = String(d.correo ?? '').trim().toLowerCase()
     if (!String(d.nombre ?? '').trim()) throw new ErrorHttp(400, 'Ingresa tu nombre.')
-    const { rows: inst } = await c.query('SELECT institucion_por_correo($1) AS id', [correoN])
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoN)) throw new ErrorHttp(400, 'Escribe un correo válido, por ejemplo nombre@gmail.com.')
+    // La universidad del dominio o, si no hay, "Invitados" (si la administración la tiene activa)
+    const { rows: inst } = await c.query('SELECT institucion_para_registro($1) AS id', [correoN])
     if (!inst[0].id) throw new ErrorHttp(400, 'Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
     if (!d.consentimiento) throw new ErrorHttp(400, 'Debes aceptar el aviso de privacidad para continuar.')
     validarPassword(d.password)

@@ -37,6 +37,8 @@ export const INSTITUCIONES_SEMILLA: Institucion[] = [
   { id: 'inst-ecotec', nombre: 'Universidad Tecnológica ECOTEC', siglas: 'ECOTEC', dominios: ['ecotec.edu.ec', 'est.ecotec.edu.ec'], activa: true },
   { id: 'inst-ucsg', nombre: 'Universidad Católica de Santiago de Guayaquil', siglas: 'UCSG', dominios: ['ucsg.edu.ec', 'cu.ucsg.edu.ec'], activa: true },
   { id: 'inst-uees', nombre: 'Universidad Espíritu Santo', siglas: 'UEES', dominios: ['uees.edu.ec'], activa: true },
+  // Correos que no son de una universidad participante (desactivarla vuelve a exigir correo universitario)
+  { id: 'inst-invitados', nombre: 'Invitados', siglas: 'INVITADOS', dominios: [], activa: true },
 ]
 
 export function crearDbSemilla(): Db {

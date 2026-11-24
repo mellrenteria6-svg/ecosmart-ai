@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   MODO_SERVIDOR,
+  INSTITUCION_INVITADOS,
   institucionPorCorreo,
   iniciarSesion,
   reenviarVerificacion,
@@ -165,7 +166,9 @@ export function Registro() {
   const [f, setF] = useState({ nombre: '', correo: '', facultad: FACULTADES[0], password: '', consentimiento: false })
   const [listo, setListo] = useState<string | null>(null)
   const { error, cargando, ejecutar } = useAccion()
-  const activas = db.instituciones.filter((i) => i.activa)
+  // Universidades con dominio propio; "Invitados" recibe cualquier otro correo si está activa
+  const activas = db.instituciones.filter((i) => i.activa && i.dominios.length > 0)
+  const invitados = db.instituciones.some((i) => i.id === INSTITUCION_INVITADOS && i.activa)
   const detectada = f.correo.includes('@') ? institucionPorCorreo(db, f.correo) : undefined
   const dominioEscrito = f.correo.split('@')[1] ?? ''
 
@@ -196,19 +199,26 @@ export function Registro() {
   }
 
   return (
-    <MarcoAcceso titulo={<>Crea tu cuenta <em>verde</em>.</>} subtitulo={`Con el correo de tu universidad: ${activas.map((i) => i.siglas).join(', ')}.`}>
+    <MarcoAcceso
+      titulo={<>Crea tu cuenta <em>verde</em>.</>}
+      subtitulo={invitados ? `Con cualquier correo. Si es de ${activas.map((i) => i.siglas).join(', ')}, quedas en tu universidad.` : `Con el correo de tu universidad: ${activas.map((i) => i.siglas).join(', ')}.`}
+    >
       <form onSubmit={enviar} className="form">
         {error && <Alerta tono="error">{error}</Alerta>}
         <Campo etiqueta="Nombre completo">
           {(id) => <input id={id} className="input" autoComplete="name" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} required />}
         </Campo>
         <Campo
-          etiqueta="Correo institucional"
+          etiqueta={invitados ? 'Correo' : 'Correo institucional'}
           ayuda={
             detectada ? (
               <span className="txt-ok">✓ {detectada.nombre}</span>
+            ) : dominioEscrito.includes('.') && invitados ? (
+              <span className="txt-ok">✓ Entrarás como Invitado (no es de una universidad participante). Te enviaremos un correo para verificarlo.</span>
             ) : dominioEscrito.includes('.') ? (
               <span className="txt-warn">@{dominioEscrito} no pertenece a una universidad participante.</span>
+            ) : invitados ? (
+              <>Cualquier correo que puedas abrir: te llegará un enlace para verificarlo.</>
             ) : (
               <>Dominios aceptados: {activas.flatMap((i) => i.dominios.map((x) => '@' + x)).join(', ')}</>
             )

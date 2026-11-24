@@ -102,13 +102,29 @@ describe('API sobre PostgreSQL', () => {
   })
 
   it('CP-RF01: registra con correo de universidad, exige verificar y el enlace es de un solo uso', async () => {
-    expect((await api('/auth/registro', { nombre: 'X', correo: 'x@gmail.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).status).toBe(400)
+    expect((await api('/auth/registro', { nombre: 'X', correo: 'no-es-un-correo', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/correo válido/)
     const r = await api('/auth/registro', { nombre: 'Ana Torres', correo: 'ana.torres@espol.edu.ec', facultad: 'Ingeniería', password: 'Clave2026x', consentimiento: true })
     expect(r.status).toBe(200)
     expect((await api('/auth/login', { correo: 'ana.torres@espol.edu.ec', password: 'Clave2026x' })).status).toBe(403)
     const t = (await correoPara('ana.torres@espol.edu.ec')).enlace.split('token=')[1]
     expect((await api('/auth/verificar', { token: t })).usuario.nombre).toBe('Ana Torres')
     expect((await api('/auth/verificar', { token: t })).status).toBe(400)
+  })
+
+  it('CP-RF01: cualquier correo se registra como Invitado y también debe verificarse', async () => {
+    const r = await api('/auth/registro', { nombre: 'Visitante', correo: 'visitante.prueba@gmail.com', facultad: 'Otra', password: 'Clave2026x', consentimiento: true })
+    expect(r.status).toBe(200)
+    const fila = await db.query("SELECT institucion_id, verificado FROM usuario WHERE correo = 'visitante.prueba@gmail.com'")
+    expect(fila.rows[0]).toEqual({ institucion_id: 'inst-invitados', verificado: false })
+    expect((await api('/auth/login', { correo: 'visitante.prueba@gmail.com', password: 'Clave2026x' })).status).toBe(403)
+    expect((await correoPara('visitante.prueba@gmail.com')).enlace).toMatch(/#\/verificar\?token=/)
+    // Si la administración desactiva "Invitados", vuelve a exigirse correo universitario
+    await db.query("UPDATE institucion SET activa = false WHERE id = 'inst-invitados'")
+    try {
+      expect((await api('/auth/registro', { nombre: 'Otro', correo: 'otro.visitante@gmail.com', facultad: 'Otra', password: 'Clave2026x', consentimiento: true })).error).toMatch(/universidad participante/)
+    } finally {
+      await db.query("UPDATE institucion SET activa = true WHERE id = 'inst-invitados'")
+    }
   })
 
   it('CP-RNF04: no envía contraseñas y cada rol ve solo lo suyo', async () => {

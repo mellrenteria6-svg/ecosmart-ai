@@ -16,7 +16,7 @@ Proyecto de **Diseño de Sistemas / Ingeniería de Software II** (noviembre de 2
 | Administrador | Dashboard, puntos y QR imprimibles, asignaciones, categorías versionadas, recompensas, entrega de canjes, usuarios, universidades, 8 reportes (CSV/PDF), alertas antifraude, auditoría |
 
 - **IA:** CLIP ViT-B/32 cuantizado que corre en el navegador (Web Worker), con clasificación *zero-shot* en 6 categorías.
-- **Varias universidades:** DEMO, ESPOL, ECOTEC, UCSG y UEES, cada una con sus dominios de correo.
+- **Varias universidades:** DEMO, ESPOL, ECOTEC, UCSG y UEES, cada una con sus dominios de correo. Cualquier otro correo se registra en el grupo **Invitados** (también debe verificarse); si la administración lo desactiva, solo se aceptan correos universitarios.
 - **Sin conexión:** los reciclajes se guardan en una cola local y se sincronizan al volver la red.
 - **Avisos push:** el usuario puede activar notificaciones del navegador; si no da permiso, los avisos siguen en la app.
 - **Privacidad:** fotos visibles solo para su titular, el recolector asignado y la administración, borradas a los 90 días; eliminación de cuenta con anonimización.

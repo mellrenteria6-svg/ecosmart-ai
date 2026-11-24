@@ -478,6 +478,15 @@ export function institucionPorCorreo(d: Db, correo: string): Institucion | undef
   return d.instituciones.find((i) => i.activa && i.dominios.includes(dominio))
 }
 
+export const INSTITUCION_INVITADOS = 'inst-invitados'
+/** Algo@algo.algo, sin espacios: lo mínimo para que el correo pueda recibir la verificación. */
+export const correoValido = (correo: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())
+
+/** Universidad de un registro nuevo: la del dominio o, si no hay, "Invitados" (si está activa). */
+export function institucionParaRegistro(d: Db, correo: string): Institucion | undefined {
+  return institucionPorCorreo(d, correo) ?? d.instituciones.find((i) => i.id === INSTITUCION_INVITADOS && i.activa)
+}
+
 export function nombreInstitucion(d: Db, id: string) {
   return d.instituciones.find((i) => i.id === id)?.siglas ?? '—'
 }
@@ -528,7 +537,8 @@ export async function registrar(datos: {
   const correo = datos.correo.trim().toLowerCase()
   if (!datos.nombre.trim()) throw new ApiError('Ingresa tu nombre.')
   // RN01 (ajustada): el correo debe pertenecer a una universidad autorizada
-  const institucion = institucionPorCorreo(snapshot.db, correo)
+  if (!correoValido(correo)) throw new ApiError('Escribe un correo válido, por ejemplo nombre@gmail.com.')
+  const institucion = institucionParaRegistro(snapshot.db, correo)
   if (!institucion) {
     throw new ApiError('Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
   }
@@ -1515,7 +1525,8 @@ function guardarInstitucion__local(adminId: string, datos: Omit<Institucion, 'id
     const siglas = datos.siglas.trim().toUpperCase()
     if (!nombre || !siglas) throw new ApiError('Indica el nombre y las siglas de la universidad.')
     const dominios = [...new Set(datos.dominios.map((x) => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))]
-    if (!dominios.length) throw new ApiError('Agrega al menos un dominio de correo.')
+    // "Invitados" no tiene dominios: recibe los correos que no son de ninguna universidad
+    if (!dominios.length && datos.id !== INSTITUCION_INVITADOS) throw new ApiError('Agrega al menos un dominio de correo.')
     const invalido = dominios.find((x) => !DOMINIO_VALIDO.test(x))
     if (invalido) throw new ApiError(`"${invalido}" no es un dominio válido. Ejemplo: espol.edu.ec`)
     for (const dom of dominios) {

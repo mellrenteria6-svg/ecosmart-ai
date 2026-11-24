@@ -27,7 +27,7 @@ describe('Esquema PostgreSQL', () => {
     const t = await uno<{ n: number }>("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
     expect(t.n).toBe(23) // 18 del esquema + institucion, institucion_dominio, correo_simulado, suscripcion_push y equipo_confianza
     const u = await uno<{ s: string }>("SELECT string_agg(siglas, ',' ORDER BY siglas) AS s FROM institucion")
-    expect(u.s).toBe('DEMO,ECOTEC,ESPOL,UCSG,UEES')
+    expect(u.s).toBe('DEMO,ECOTEC,ESPOL,INVITADOS,UCSG,UEES')
   })
 
   it('CP-RNF04: las contraseñas se guardan con bcrypt y se verifican en la base', async () => {
@@ -77,12 +77,20 @@ describe('Esquema PostgreSQL', () => {
     expect(v.rows.map((x) => x.version)).toEqual([1, 2])
   })
 
-  it('RN01: solo se registran correos de universidades activas', async () => {
+  it('RN01: cada cuenta queda en su universidad; otro dominio va a Invitados solo si está activa', async () => {
     const insertar = (correo: string) =>
       db.exec(`INSERT INTO usuario (campus_id, nombre, correo, facultad, password_hash, consentimiento_privacidad) VALUES (1, 'X', '${correo}', 'F', 'h', true)`)
+    const de = async (correo: string) => (await uno<{ i: string }>(`SELECT institucion_id AS i FROM usuario WHERE correo = '${correo}'`)).i
     await insertar('ana@ESPOL.edu.ec')
-    expect((await uno<{ i: string }>("SELECT institucion_id AS i FROM usuario WHERE correo = 'ana@espol.edu.ec'")).i).toBe('inst-espol')
-    await expect(insertar('x@gmail.com')).rejects.toThrow(/universidad participante/)
+    expect(await de('ana@espol.edu.ec')).toBe('inst-espol')
+    await insertar('x@gmail.com')
+    expect(await de('x@gmail.com')).toBe('inst-invitados')
+    await db.exec("UPDATE institucion SET activa = false WHERE id = 'inst-invitados'")
+    try {
+      await expect(insertar('y@gmail.com')).rejects.toThrow(/universidad participante/)
+    } finally {
+      await db.exec("UPDATE institucion SET activa = true WHERE id = 'inst-invitados'")
+    }
   })
 
   it('CP-RNF05: una cuenta eliminada no puede conservar datos personales', async () => {
