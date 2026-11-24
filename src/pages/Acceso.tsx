@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import type { Rol } from '../data/types'
 import {
   MODO_SERVIDOR,
   INSTITUCION_INVITADOS,
   institucionPorCorreo,
   iniciarSesion,
-  reenviarVerificacion,
   registrar,
   restablecerDemo,
   restablecerPassword,
   solicitarRestablecimiento,
   useStore,
   verificarCorreo,
-  verificarSegundoFactor,
 } from '../data/store'
 import { DEMO_CUENTAS, DEMO_PASSWORD } from '../data/seed'
 import { Marca } from '../components/Shell'
@@ -58,67 +57,27 @@ function enfocarAlMontar() {
   return (el: HTMLInputElement | null) => el?.focus()
 }
 
+const INICIO_POR_ROL: Record<Rol, string> = { usuario: '/app', recolector: '/rec', admin: '/admin', aliado: '/aliado' }
+
 export function Ingresar() {
   const [correo, setCorreo] = useState('')
   const [password, setPassword] = useState('')
-  const [segundoFactor, setSegundoFactor] = useState<string | null>(null)
   const cuentaEliminada = useRuta().query.get('eliminada') === '1'
-  const [codigo, setCodigo] = useState('')
   const { error, cargando, ejecutar } = useAccion()
-  // Sin correo real (o una cuenta de demostración sin buzón configurado) el código está en la bandeja simulada
-  const { usaBandeja, demo } = useAvisoCorreo(correo)
-  // Cuentas internas (@…eco.smart.com) y de demostración: el código va al correo del proyecto
-  const [alProyecto, setAlProyecto] = useState(false)
 
+  // Sin códigos al entrar: el único código es el de cambiar la contraseña
   async function enviar(e: FormEvent) {
     e.preventDefault()
     const r = await ejecutar(() => iniciarSesion(correo, password))
-    if (!r) return
-    if (r.tipo === 'segundo_factor') {
-      setAlProyecto(!!r.alProyecto || demo)
-      setSegundoFactor(r.usuarioId)
-    }
-    else navegar(r.usuario.rol === 'recolector' ? '/rec' : r.usuario.rol === 'aliado' ? '/aliado' : r.usuario.rol === 'admin' ? '/admin' : '/app')
-  }
-
-  async function enviarCodigo(e: FormEvent) {
-    e.preventDefault()
-    const u = await ejecutar(() => verificarSegundoFactor(segundoFactor!, codigo))
-    if (u) navegar(u.rol === 'aliado' ? '/aliado' : '/admin')
-  }
-
-  if (segundoFactor) {
-    return (
-      <MarcoAcceso titulo="Verificación en dos pasos" subtitulo="Es la primera vez que entras desde este equipo. Enviamos un código de 6 dígitos a tu correo; después, este equipo queda recordado 30 días.">
-        <form onSubmit={enviarCodigo} className="form">
-          {error && <Alerta tono="error">{error}</Alerta>}
-          <Campo
-            etiqueta="Código de verificación"
-            ayuda={
-              usaBandeja ? (
-                <>Revísalo en la <a href="#/correo" target="_blank">bandeja de correo simulada</a>.</>
-              ) : alProyecto ? (
-                'Esta cuenta no tiene buzón propio: el código llegó al correo del proyecto. Pídeselo a la administración. Vence en 10 minutos.'
-              ) : (
-                'Revisa tu bandeja de entrada (y la carpeta de Spam). Vence en 10 minutos.'
-              )
-            }
-          >
-            {(id, d) => <input id={id} aria-describedby={d} className="input input-codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} ref={enfocarAlMontar()} required />}
-          </Campo>
-          <button className="btn btn-tinta btn-bloque" disabled={cargando || codigo.length !== 6}>Verificar y entrar</button>
-          <button type="button" className="btn btn-fantasma btn-bloque" onClick={() => setSegundoFactor(null)}>Usar otra cuenta</button>
-        </form>
-      </MarcoAcceso>
-    )
+    if (r) navegar(INICIO_POR_ROL[r.usuario.rol])
   }
 
   return (
-    <MarcoAcceso titulo={<>Hola de <em>nuevo</em>.</>} subtitulo="Ingresa con tu correo institucional.">
+    <MarcoAcceso titulo={<>Hola de <em>nuevo</em>.</>} subtitulo="Ingresa con tu correo y tu contraseña.">
       {cuentaEliminada && <Alerta tono="ok" titulo="Tu cuenta fue eliminada">Borramos tus datos personales y tus fotos. Gracias por reciclar con EcoSmart AI.</Alerta>}
       <form onSubmit={enviar} className="form">
         {error && <Alerta tono="error">{error}</Alerta>}
-        <Campo etiqueta="Correo institucional">
+        <Campo etiqueta="Correo">
           {(id) => <input id={id} className="input" type="email" autoComplete="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required />}
         </Campo>
         <Campo etiqueta="Contraseña">
@@ -170,7 +129,6 @@ export function Ingresar() {
 export function Registro() {
   const { db } = useStore()
   const [f, setF] = useState({ nombre: '', correo: '', facultad: FACULTADES[0], password: '', consentimiento: false })
-  const [listo, setListo] = useState<string | null>(null)
   const { error, cargando, ejecutar } = useAccion()
   // Universidades con dominio propio; "Invitados" recibe cualquier otro correo si está activa
   const activas = db.instituciones.filter((i) => i.activa && i.dominios.length > 0)
@@ -181,30 +139,11 @@ export function Registro() {
   const detectada = f.correo.includes('@') ? institucionPorCorreo(db, f.correo) : undefined
   const dominioEscrito = f.correo.split('@')[1] ?? ''
 
-  const correoReal = useCorreoReal()
-
+  // Sin verificación por correo: al registrarse entra de inmediato
   async function enviar(e: FormEvent) {
     e.preventDefault()
     const u = await ejecutar(() => registrar(f))
-    if (u) setListo(u.correo)
-  }
-
-  if (listo) {
-    return (
-      <MarcoAcceso titulo="Revisa tu correo" subtitulo={<>Enviamos un enlace de verificación a <b>{listo}</b>. Tu cuenta no podrá reciclar hasta que lo abras.</>}>
-        {correoReal ? (
-          <Alerta tono="info">Llega desde <b>EcoSmart AI</b> en unos segundos. Si no lo ves, revisa la carpeta de Spam o Correo no deseado.</Alerta>
-        ) : (
-          <Alerta tono="info" titulo="Prototipo">
-            Los correos se muestran en la <a href="#/correo">bandeja de correo simulada</a>.
-          </Alerta>
-        )}
-        <div className="form">
-          {!correoReal && <a className="btn btn-tinta btn-bloque" href="#/correo">Abrir bandeja simulada</a>}
-          <button type="button" className="btn btn-fantasma btn-bloque" onClick={() => reenviarVerificacion(listo)}>Reenviar enlace</button>
-        </div>
-      </MarcoAcceso>
-    )
+    if (u) navegar(INICIO_POR_ROL[u.rol])
   }
 
   return (
@@ -227,11 +166,11 @@ export function Registro() {
             detectada ? (
               <span className="txt-ok">✓ {detectada.nombre}</span>
             ) : dominioEscrito.includes('.') && invitados ? (
-              <span className="txt-ok">✓ Entrarás como Invitado (no es de una universidad participante). Te enviaremos un correo para verificarlo.</span>
+              <span className="txt-ok">✓ Puedes registrarte con este correo.</span>
             ) : dominioEscrito.includes('.') ? (
               <span className="txt-warn">@{dominioEscrito} no pertenece a una universidad participante.</span>
             ) : invitados ? (
-              <>Cualquier correo que puedas abrir: te llegará un enlace para verificarlo.</>
+              <>Usa un correo que puedas abrir: lo necesitarás si algún día cambias tu contraseña.</>
             ) : (
               <>Dominios aceptados: {activas.flatMap((i) => i.dominios.map((x) => '@' + x)).join(', ')}</>
             )
@@ -322,7 +261,7 @@ export function Recuperar() {
             setEnviado(true)
           }}
         >
-          <Campo etiqueta="Correo institucional">
+          <Campo etiqueta="Correo">
             {(id) => <input id={id} className="input" type="email" autoComplete="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required />}
           </Campo>
           <button className="btn btn-tinta btn-bloque">Enviar código</button>

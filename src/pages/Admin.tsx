@@ -853,7 +853,7 @@ export function AdminUsuarios({ usuario }: { usuario: Usuario }) {
                 </td>
                 <td>{nombreInstitucion(db, x.institucionId)}</td>
                 <td>{ETIQUETA_ROL[x.rol]}</td>
-                <td>{x.eliminadoEn ? <Badge>Eliminada</Badge> : x.bloqueado ? <Badge tono="error">Bloqueado</Badge> : x.verificado ? <Badge tono="ok">Activo</Badge> : <Badge tono="warn">Sin verificar</Badge>}</td>
+                <td>{x.eliminadoEn ? <Badge>Eliminada</Badge> : x.bloqueado ? <Badge tono="error">Bloqueado</Badge> : x.verificado ? <Badge tono="ok">Activo</Badge> : <Badge tono="warn">Pendiente de registro</Badge>}</td>
                 <td className="num">{x.rol === 'usuario' ? fmtNumero(saldoConfirmado(db, x.id)) : '—'}</td>
                 <td className="num">{db.reciclajes.filter((r) => r.usuarioId === x.id).length}</td>
                 <td className="num">
@@ -1240,7 +1240,7 @@ function CrearCuentaInterna({ onCerrar }: { onCerrar: () => void }) {
   const { db } = useStore()
   const { dominios, errorCarga } = useDominiosInternos()
   const [f, setF] = useState({ nombre: '', usuario: '', rol: 'usuario' as Rol, institucionId: INSTITUCION_INVITADOS, facultad: '' })
-  const [creada, setCreada] = useState<{ correo: string; password: string } | null>(null)
+  const [creada, setCreada] = useState<{ correo: string } | null>(null)
   const [copiado, setCopiado] = useState('')
   const { error, cargando, ejecutar } = useAccion()
   const universidades = db.instituciones.filter((i) => i.activa)
@@ -1252,7 +1252,9 @@ function CrearCuentaInterna({ onCerrar }: { onCerrar: () => void }) {
     <Modal abierto titulo={creada ? 'Cuenta creada' : 'Crear cuenta'} onCerrar={onCerrar}>
       {creada ? (
         <div className="form">
-          <Alerta tono="ok">Pásale estos datos a la persona. La contraseña <b>no se volverá a mostrar</b>; podrá cambiarla en Mi perfil.</Alerta>
+          <Alerta tono="ok">
+            Pásale este correo a la persona. Ella entra a <b>Regístrate</b>, lo escribe, pone su nombre y <b>su propia contraseña</b>, y queda lista.
+          </Alerta>
           <Campo etiqueta="Correo">
             {(id) => (
               <div className="form-linea">
@@ -1261,15 +1263,7 @@ function CrearCuentaInterna({ onCerrar }: { onCerrar: () => void }) {
               </div>
             )}
           </Campo>
-          <Campo etiqueta="Contraseña inicial">
-            {(id) => (
-              <div className="form-linea">
-                <input id={id} className="input input-tecnico" readOnly value={creada.password} />
-                <button type="button" className="btn btn-fantasma" onClick={() => copiar(creada.password, 'clave')}>{copiado === 'clave' ? '✓ Copiada' : 'Copiar'}</button>
-              </div>
-            )}
-          </Campo>
-          <p className="nota">Este correo no tiene buzón: los códigos de la cuenta (primer ingreso de administradores y aliados, cambio de contraseña) llegan al correo del proyecto con el asunto [{creada.correo}].</p>
+          <p className="nota">Este correo no tiene buzón: si la persona cambia su contraseña, el código llega al correo del proyecto con el asunto [{creada.correo}].</p>
           <button type="button" className="btn btn-tinta btn-bloque" onClick={onCerrar}>Listo</button>
         </div>
       ) : (
@@ -1282,7 +1276,7 @@ function CrearCuentaInterna({ onCerrar }: { onCerrar: () => void }) {
           }}
         >
           {(error || errorCarga) && <Alerta tono="error">{error ?? errorCarga}</Alerta>}
-          <Campo etiqueta="Nombre completo">{(id) => <input id={id} className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} required />}</Campo>
+          <Campo etiqueta="Nombre (opcional)" ayuda="La persona lo confirma al registrarse.">{(id, d) => <input id={id} aria-describedby={d} className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} />}</Campo>
           <Campo etiqueta="Rol">
             {(id) => (
               <select id={id} className="input" value={f.rol} onChange={(e) => setF({ ...f, rol: e.target.value as Rol })}>

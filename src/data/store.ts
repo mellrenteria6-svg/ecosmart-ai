@@ -533,7 +533,13 @@ export async function registrar(datos: {
   password: string
   consentimiento: boolean
 }) {
-  if (MODO_SERVIDOR) return (await llamarApi<{ usuario: Usuario }>('/auth/registro', datos)).usuario
+  // Sin verificación por correo: la cuenta queda lista y se entra de inmediato
+  if (MODO_SERVIDOR) {
+    const r = await llamarApi<{ usuario: { id: string }; sesion: Sesion }>('/auth/registro', datos)
+    emitir({ sesion: r.sesion })
+    await refrescarDesdeServidor()
+    return snapshot.db.usuarios.find((u) => u.id === r.sesion.usuarioId)!
+  }
   const correo = datos.correo.trim().toLowerCase()
   if (!datos.nombre.trim()) throw new ApiError('Ingresa tu nombre.')
   // RN01 (ajustada): el correo debe pertenecer a una universidad autorizada
@@ -545,7 +551,7 @@ export async function registrar(datos: {
   if (!datos.consentimiento) throw new ApiError('Debes aceptar el aviso de privacidad para continuar.')
   validarPassword(datos.password)
   const passwordHash = await hashPassword(correo, datos.password)
-  return transaccion((d) => {
+  const nuevo = transaccion((d) => {
     if (d.usuarios.some((u) => u.correo === correo)) {
       throw new ApiError('Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña.')
     }
@@ -557,7 +563,7 @@ export async function registrar(datos: {
       facultad: datos.facultad,
       rol: 'usuario',
       passwordHash,
-      verificado: false,
+      verificado: true,
       bloqueado: false,
       intentosFallidos: 0,
       sesionVersion: 1,
@@ -565,16 +571,10 @@ export async function registrar(datos: {
       consentimientoPrivacidad: true,
     }
     d.usuarios.push(usuario)
-    const token = crearToken(d, usuario.id, 'verificacion', 24 * 60)
-    enviarCorreo(
-      d,
-      correo,
-      'Verifica tu cuenta de EcoSmart AI',
-      `Hola ${usuario.nombre}, confirma tu correo para empezar a reciclar. El enlace vence en 24 horas y solo puede usarse una vez.`,
-      `#/verificar?token=${token}`,
-    )
     return usuario
   })
+  emitir({ sesion: { usuarioId: nuevo.id, sesionVersion: nuevo.sesionVersion, creadaEn: Date.now() } })
+  return nuevo
 }
 
 export function reenviarVerificacion(correo: string) {
@@ -598,32 +598,11 @@ export async function verificarCorreo(token: string): Promise<Usuario> {
   })
 }
 
-// alProyecto: la cuenta no tiene buzón propio (interna o de demostración) y su código va al correo del proyecto
-export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario } | { tipo: 'segundo_factor'; usuarioId: string; alProyecto?: boolean }
-
-// Equipos de confianza (RNF13): tras pasar el segundo factor, este navegador queda recordado
-// 30 días para esa cuenta. Con servidor se guarda el identificador que entrega el servidor; en
-// el modo demostración, solo hasta cuándo vale.
-const CLAVE_EQUIPOS = 'ecosmart.equipos'
-const DIAS_EQUIPO = 30
-type Equipos = Record<string, { equipo?: string; vence: number }>
-function leerEquipos(): Equipos {
-  const todos = leer<Equipos>(CLAVE_EQUIPOS, {})
-  return Object.fromEntries(Object.entries(todos).filter(([, e]) => e && e.vence > Date.now()))
-}
-function recordarEquipo(correo: string, equipo?: string) {
-  escribir(CLAVE_EQUIPOS, { ...leerEquipos(), [correo.trim().toLowerCase()]: { equipo, vence: Date.now() + DIAS_EQUIPO * 24 * HORA } })
-}
-function olvidarEquipo(correo: string) {
-  const { [correo.trim().toLowerCase()]: _quitado, ...resto } = leerEquipos()
-  void _quitado
-  escribir(CLAVE_EQUIPOS, resto)
-}
+export type ResultadoLogin = { tipo: 'ok'; usuario: Usuario }
 
 export async function iniciarSesion(correoIn: string, password: string): Promise<ResultadoLogin> {
   if (MODO_SERVIDOR) {
-    const equipo = leerEquipos()[correoIn.trim().toLowerCase()]?.equipo
-    const r = await llamarApi<ResultadoLogin & { sesion?: Sesion }>('/auth/login', { correo: correoIn, password, equipo })
+    const r = await llamarApi<ResultadoLogin & { sesion?: Sesion }>('/auth/login', { correo: correoIn, password })
     if (r.sesion) {
       emitir({ sesion: r.sesion })
       await refrescarDesdeServidor()
@@ -651,15 +630,9 @@ export async function iniciarSesion(correoIn: string, password: string): Promise
       return { error: 'Correo o contraseña incorrectos.' }
     }
     if (u.bloqueado) return { error: 'Tu cuenta está bloqueada. Comunícate con el administrador.' }
-    if (!u.verificado) return { error: 'Verifica tu correo institucional antes de iniciar sesión.' }
     u.intentosFallidos = 0
     u.bloqueoTemporalHasta = undefined
-    if ((u.rol === 'admin' || u.rol === 'aliado') && !leerEquipos()[u.correo]) {
-      const codigo = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000))
-      crearToken(d, u.id, 'segundo_factor', 10, codigo)
-      enviarCorreo(d, u.correo, 'Código de acceso EcoSmart AI', `Tu código de segundo factor es ${codigo}. Vence en 10 minutos.`)
-      return { tipo: 'segundo_factor', usuarioId: u.id }
-    }
+    // Sin códigos al entrar (decisión del equipo): el único código es el de cambiar la contraseña
     return { tipo: 'ok', usuario: u }
   })
   if ('error' in resultado) throw new ApiError(resultado.error)
@@ -669,25 +642,6 @@ export async function iniciarSesion(correoIn: string, password: string): Promise
   return resultado
 }
 
-export async function verificarSegundoFactor(usuarioId: string, codigo: string): Promise<Usuario> {
-  if (MODO_SERVIDOR) {
-    const r = await llamarApi<{ sesion: Sesion; equipo?: string }>('/auth/segundo-factor', { usuarioId, codigo })
-    emitir({ sesion: r.sesion })
-    await refrescarDesdeServidor()
-    const u = snapshot.db.usuarios.find((x) => x.id === r.sesion.usuarioId)!
-    if (r.equipo) recordarEquipo(u.correo, r.equipo)
-    return u
-  }
-  const u = transaccion((d) => {
-    consumirToken(d, codigo.trim(), 'segundo_factor', usuarioId)
-    const usuario = actor(d, usuarioId)
-    auditar(d, usuario.id, 'Inicio de sesión con segundo factor', 'USUARIO', usuario.id, `Equipo recordado ${DIAS_EQUIPO} días`)
-    return usuario
-  })
-  recordarEquipo(u.correo)
-  emitir({ sesion: { usuarioId: u.id, sesionVersion: u.sesionVersion, creadaEn: Date.now() } })
-  return u
-}
 
 // ---------------------------------------------------------------------------
 // Cuentas internas por rol (solo con servidor): la administración las crea con el dominio
@@ -709,10 +663,10 @@ export async function guardarDominiosInternos(dominios: DominiosInternos): Promi
   return (await llamarApi<{ dominios: DominiosInternos }>('/admin/dominios', { dominios }, 'PUT')).dominios
 }
 
-/** Devuelve el correo creado y su contraseña inicial (se muestra una sola vez). */
+/** Reserva el correo; la persona lo activa en Regístrate con su propia contraseña. */
 export async function crearCuentaInterna(datos: { nombre: string; usuario: string; rol: Rol; institucionId: string; facultad: string }) {
   exigirServidor()
-  const r = await llamarApi<{ correo: string; password: string }>('/admin/cuentas', datos)
+  const r = await llamarApi<{ correo: string }>('/admin/cuentas', datos)
   await refrescarDesdeServidor()
   return r
 }
@@ -752,7 +706,6 @@ export async function restablecerPassword(correoIn: string, codigo: string, pass
   const correo = correoIn.trim().toLowerCase()
   if (MODO_SERVIDOR) {
     await llamarApi('/auth/restablecer', { correo, codigo: codigo.trim(), password })
-    olvidarEquipo(correo)
     emitir({ sesion: null })
     return
   }
@@ -768,7 +721,6 @@ export async function restablecerPassword(correoIn: string, codigo: string, pass
     usuario.bloqueoTemporalHasta = undefined
     auditar(d, usuario.id, 'Restablecer contraseña', 'USUARIO', usuario.id, 'Sesiones y equipos de confianza revocados')
   })
-  olvidarEquipo(correo)
   if (snapshot.sesion?.usuarioId === u.id) emitir({ sesion: null })
 }
 

@@ -101,23 +101,23 @@ describe('API sobre PostgreSQL', () => {
     expect((await api('/salud')).postgres).toMatch(/PostgreSQL/)
   })
 
-  it('CP-RF01: registra con correo de universidad, exige verificar y el enlace es de un solo uso', async () => {
+  it('CP-RF01: registra y entra de inmediato, sin código ni enlace de verificación', async () => {
     expect((await api('/auth/registro', { nombre: 'X', correo: 'no-es-un-correo', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/correo válido/)
+    const antes = (await db.query('SELECT count(*)::int AS n FROM correo_simulado')).rows[0] as { n: number }
     const r = await api('/auth/registro', { nombre: 'Ana Torres', correo: 'ana.torres@espol.edu.ec', facultad: 'Ingeniería', password: 'Clave2026x', consentimiento: true })
     expect(r.status).toBe(200)
-    expect((await api('/auth/login', { correo: 'ana.torres@espol.edu.ec', password: 'Clave2026x' })).status).toBe(403)
-    const t = (await correoPara('ana.torres@espol.edu.ec')).enlace.split('token=')[1]
-    expect((await api('/auth/verificar', { token: t })).usuario.nombre).toBe('Ana Torres')
-    expect((await api('/auth/verificar', { token: t })).status).toBe(400)
+    expect(r.sesion.token).toMatch(/^[\w-]{20,}$/)
+    expect(((await db.query('SELECT count(*)::int AS n FROM correo_simulado')).rows[0] as { n: number }).n).toBe(antes.n) // no se envía ningún correo
+    expect((await api('/auth/login', { correo: 'ana.torres@espol.edu.ec', password: 'Clave2026x' })).tipo).toBe('ok')
+    expect((await api('/auth/registro', { nombre: 'Ana', correo: 'ana.torres@espol.edu.ec', facultad: 'F', password: 'Clave2026x', consentimiento: true })).status).toBe(409)
   })
 
-  it('CP-RF01: cualquier correo se registra como Invitado y también debe verificarse', async () => {
+  it('CP-RF01: cualquier correo se registra como Invitado y entra de inmediato', async () => {
     const r = await api('/auth/registro', { nombre: 'Visitante', correo: 'visitante.prueba@gmail.com', facultad: 'Otra', password: 'Clave2026x', consentimiento: true })
     expect(r.status).toBe(200)
     const fila = await db.query("SELECT institucion_id, verificado FROM usuario WHERE correo = 'visitante.prueba@gmail.com'")
-    expect(fila.rows[0]).toEqual({ institucion_id: 'inst-invitados', verificado: false })
-    expect((await api('/auth/login', { correo: 'visitante.prueba@gmail.com', password: 'Clave2026x' })).status).toBe(403)
-    expect((await correoPara('visitante.prueba@gmail.com')).enlace).toMatch(/#\/verificar\?token=/)
+    expect(fila.rows[0]).toEqual({ institucion_id: 'inst-invitados', verificado: true })
+    expect((await api('/auth/login', { correo: 'visitante.prueba@gmail.com', password: 'Clave2026x' })).tipo).toBe('ok')
     // Si la administración desactiva "Invitados", vuelve a exigirse correo universitario
     await db.query("UPDATE institucion SET activa = false WHERE id = 'inst-invitados'")
     try {
@@ -267,53 +267,45 @@ describe('API sobre PostgreSQL', () => {
     expect(guardados.rows.map((r) => (r as { idempotency_key: string }).idempotency_key)).toEqual(['lote-1', 'lote-2', 'lote-3'])
   })
 
-  it('CP-RNF13: el segundo factor se pide una vez por equipo; cambiar el rol lo olvida', async () => {
+  it('administrador y aliado entran sin código (el único código es el de cambiar la contraseña)', async () => {
     token = null
-    const login = (equipo?: string) => api('/auth/login', { correo: 'aliado@universidad.edu.ec', password: 'EcoSmart2026', equipo })
-    const primero = await login()
-    expect(primero.tipo).toBe('segundo_factor')
-    const codigo = (await correoPara('aliado@universidad.edu.ec')).cuerpo.match(/\d{6}/)[0]
-    const v = await api('/auth/segundo-factor', { usuarioId: primero.usuarioId, codigo })
-    expect(v.equipo).toMatch(/^[\w-]{40,}$/)
-    // Mismo equipo: entra sin código; otro equipo (o uno inventado): pide código
-    expect((await login(v.equipo)).tipo).toBe('ok')
-    expect((await login()).tipo).toBe('segundo_factor')
-    expect((await login('x'.repeat(43))).tipo).toBe('segundo_factor')
-    // Un cambio de rol revoca los equipos de confianza de esa cuenta
-    await entrar('admin@universidad.edu.ec')
-    const aliadoId = primero.usuarioId
-    expect((await api('/accion/cambiarRol', { args: ['x', aliadoId, 'usuario'] })).status).toBe(200)
-    expect((await api('/accion/cambiarRol', { args: ['x', aliadoId, 'aliado'] })).status).toBe(200)
-    token = null
-    expect((await login(v.equipo)).tipo).toBe('segundo_factor')
+    for (const correo of ['admin@universidad.edu.ec', 'aliado@universidad.edu.ec']) {
+      const r = await api('/auth/login', { correo, password: 'EcoSmart2026' })
+      expect(r.tipo).toBe('ok')
+      expect(r.sesion.token).toBeTruthy()
+    }
+    expect((await api('/auth/segundo-factor', { usuarioId: 'x', codigo: '123456' })).status).toBe(404)
   })
 
-  it('CP-RF25: la administración crea cuentas internas con el dominio de su rol', async () => {
+  it('CP-RF25: la administración crea el correo interno y la persona se registra con su contraseña', async () => {
     await entrar('admin@universidad.edu.ec')
     expect((await api('/admin/dominios')).dominios).toEqual({ usuario: 'eco.smart.com', recolector: 'recolector.eco.smart.com', aliado: 'aliado.eco.smart.com', admin: 'administrador.eco.smart.com' })
-    const r = await api('/admin/cuentas', { nombre: 'Juan Aliado', usuario: 'juan.aliado', rol: 'aliado', institucionId: 'inst-espol', facultad: '' })
-    expect(r.correo).toBe('juan.aliado@aliado.eco.smart.com')
-    expect(r.password).toMatch(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{12}$/)
-    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'juan.aliado', rol: 'aliado' })).status).toBe(409)
-    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'con espacios', rol: 'usuario' })).status).toBe(400)
-    expect((await api('/admin/cuentas', { nombre: 'Otro', usuario: 'x', rol: 'superadmin' })).status).toBe(400)
-    // La cuenta entra con la contraseña inicial; su código va al correo del proyecto
+    const r = await api('/admin/cuentas', { nombre: '', usuario: 'juan.aliado', rol: 'aliado', institucionId: 'inst-espol', facultad: '' })
+    expect(r).toMatchObject({ correo: 'juan.aliado@aliado.eco.smart.com' })
+    expect(r.password).toBeUndefined() // la contraseña la pone la persona
+    expect((await api('/admin/cuentas', { usuario: 'juan.aliado', rol: 'aliado' })).status).toBe(409)
+    expect((await api('/admin/cuentas', { usuario: 'con espacios', rol: 'usuario' })).status).toBe(400)
+    expect((await api('/admin/cuentas', { usuario: 'x', rol: 'superadmin' })).status).toBe(400)
     token = null
-    const login = await api('/auth/login', { correo: r.correo, password: r.password })
-    expect(login).toMatchObject({ tipo: 'segundo_factor', alProyecto: true })
-    const fila = await db.query(`SELECT rol, verificado, institucion_id FROM usuario WHERE correo = '${r.correo}'`)
-    expect(fila.rows[0]).toEqual({ rol: 'aliado', verificado: true, institucion_id: 'inst-espol' })
+    // Antes de registrarse no puede entrar con ninguna contraseña
+    expect((await api('/auth/login', { correo: r.correo, password: 'Cualquiera1' })).error).toMatch(/aún no está registrada/)
+    // Se registra con su nombre y su contraseña y entra de inmediato, con el rol y la universidad asignados
+    const reg = await api('/auth/registro', { nombre: 'Juan Pérez', correo: r.correo, facultad: '', password: 'MiClave2026', consentimiento: true })
+    expect(reg.status).toBe(200)
+    const fila = await db.query(`SELECT nombre, rol, verificado, institucion_id FROM usuario WHERE correo = '${r.correo}'`)
+    expect(fila.rows[0]).toEqual({ nombre: 'Juan Pérez', rol: 'aliado', verificado: true, institucion_id: 'inst-espol' })
+    expect((await api('/auth/login', { correo: r.correo, password: 'MiClave2026' })).tipo).toBe('ok')
+    expect((await api('/auth/registro', { nombre: 'Otro', correo: r.correo, facultad: '', password: 'OtraClave2026', consentimiento: true })).status).toBe(409)
   })
 
-  it('CP-RF25: solo la administración ve y cambia los dominios; nadie se registra solo con ellos', async () => {
-    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@administrador.eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/uso interno/)
-    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/uso interno/)
+  it('CP-RF25: solo la administración ve y cambia los dominios; nadie se registra con uno que no creó', async () => {
+    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@administrador.eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/aún no existe/)
+    expect((await api('/auth/registro', { nombre: 'Intruso', correo: 'yo@eco.smart.com', facultad: 'F', password: 'Clave2026x', consentimiento: true })).error).toMatch(/aún no existe/)
     await entrar('estudiante@universidad.edu.ec')
     expect((await api('/admin/dominios')).status).toBe(403)
     expect((await api('/admin/cuentas', { nombre: 'X', usuario: 'yo', rol: 'admin' })).status).toBe(403)
     await entrar('admin@universidad.edu.ec')
     const actuales = (await api('/admin/dominios')).dominios
-    expect((await api('/admin/dominios', undefined)).status).toBe(200)
     const cambiar = (dominios: Record<string, string>) =>
       fetch(base + '/admin/dominios', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ dominios }) }).then(async (x) => ({ status: x.status, ...(await x.json()) }))
     expect((await cambiar({ ...actuales, usuario: 'no valido' })).status).toBe(400)
@@ -323,7 +315,7 @@ describe('API sobre PostgreSQL', () => {
     expect((await cambiar(actuales)).status).toBe(200)
   })
 
-  it('CP-RNF13: el administrador entra con segundo factor y entrega el canje una sola vez', async () => {
+  it('el administrador entrega el canje una sola vez', async () => {
     await entrar('admin@universidad.edu.ec')
     expect((await api('/accion/crearAjuste', { args: ['x', ana, 50, 'Bono'] })).status).toBe(200)
     await entrar('ana.torres@espol.edu.ec', 'Clave2026x')
@@ -396,17 +388,13 @@ describe('Correos reales por SMTP (RF01, RF02, RNF13)', () => {
   })
   afterAll(() => correo.usarTransporte(null))
 
-  it('CP-RF01: el correo de verificación llega con el enlace completo y funciona', async () => {
+  it('CP-RF01: registrarse ya no envía correo de verificación', async () => {
     token = null
+    const antes = buzon.length
     expect((await api('/auth/registro', { nombre: 'Luis Mora', correo: 'luis.mora@espol.edu.ec', facultad: 'Ingeniería', password: 'Clave2026x', consentimiento: true })).status).toBe(200)
     await correo.repartir()
-    const m = buzon.find((x) => x.to === 'luis.mora@espol.edu.ec')!
-    expect(m.subject).toBe('Verifica tu cuenta de EcoSmart AI')
-    const enlace = m.text.match(/https:\/\/ecosmart\.test\/#\/verificar\?token=([\w-]+)/)!
-    expect(enlace).not.toBeNull()
-    expect(m.html).toContain('Abrir EcoSmart AI')
-    expect((await fila('luis.mora@espol.edu.ec')).enviado_en).not.toBeNull()
-    expect((await api('/auth/verificar', { token: enlace[1] })).usuario.nombre).toBe('Luis Mora')
+    expect(buzon.length).toBe(antes)
+    expect(correo.enlaceCompleto('#/app')).toBe('https://ecosmart.test/#/app')
   })
 
   it('CP-RNF13: si el servidor de correo falla, se reintenta y el código llega', async () => {

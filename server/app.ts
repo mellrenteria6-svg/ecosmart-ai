@@ -422,8 +422,7 @@ rutasAuth.use((req, res, next) => (req.path === '/logout' ? next() : limiteAuth(
 rutasAuth.post('/registro', async (req, res) => void res.json(await auth.registrar(req.body)))
 rutasAuth.post('/reenviar', async (req, res) => void res.json(await auth.reenviarVerificacion(req.body?.correo)))
 rutasAuth.post('/verificar', async (req, res) => void res.json(await auth.verificarCorreo(req.body?.token)))
-rutasAuth.post('/login', async (req, res) => void res.json(await auth.iniciarSesion(req.body?.correo, req.body?.password, req.body?.equipo)))
-rutasAuth.post('/segundo-factor', async (req, res) => void res.json(await auth.verificarSegundoFactor(req.body?.usuarioId, req.body?.codigo, req.headers['user-agent'])))
+rutasAuth.post('/login', async (req, res) => void res.json(await auth.iniciarSesion(req.body?.correo, req.body?.password)))
 rutasAuth.post('/recuperar', async (req, res) => void res.json(await auth.solicitarRestablecimiento(req.body?.correo)))
 rutasAuth.post('/restablecer', async (req, res) => void res.json(await auth.restablecerPassword(req.body?.correo, req.body?.codigo, req.body?.password)))
 rutasAuth.post('/logout', async (req, res) => {

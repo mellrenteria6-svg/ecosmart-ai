@@ -19,7 +19,6 @@ const sha256 = (t: string) => createHash('sha256').update(t).digest('hex')
 const esCodigo = (tipo: string) => tipo === 'segundo_factor' || tipo === 'restablecer'
 const claveToken = (valor: string, tipo: string, usuarioId?: string) => sha256(esCodigo(tipo) ? `${usuarioId}:${valor}` : valor)
 const codigoSeisDigitos = () => String(randomInt(100000, 1000000))
-const DIAS_EQUIPO_CONFIANZA = 30
 const tokenAleatorio = (bytes = 18) => randomBytes(bytes).toString('base64url')
 const DIAS_SESION = 7
 
@@ -99,43 +98,53 @@ export async function usuarioDeToken(token: string | undefined): Promise<string 
   return rows[0]?.id ?? null
 }
 
+// Registro sin código ni enlace de verificación: la cuenta queda lista y se entra de inmediato.
+// Los correos internos (@eco.smart.com y sus variantes por rol) solo se registran si la
+// administración ya los creó: la persona pone aquí su nombre y su propia contraseña.
 export function registrar(d: { nombre: string; correo: string; facultad: string; password: string; consentimiento: boolean }) {
   return enTransaccion(async (c) => {
     const correoN = String(d.correo ?? '').trim().toLowerCase()
-    if (!String(d.nombre ?? '').trim()) throw new ErrorHttp(400, 'Ingresa tu nombre.')
+    const nombre = String(d.nombre ?? '').trim()
+    if (!nombre) throw new ErrorHttp(400, 'Ingresa tu nombre.')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoN)) throw new ErrorHttp(400, 'Escribe un correo válido, por ejemplo nombre@gmail.com.')
-    // Los dominios internos (@eco.smart.com y sus variantes por rol) solo los usa la administración
-    if ((await c.query('SELECT es_correo_interno($1) AS si', [correoN])).rows[0].si) {
-      throw new ErrorHttp(400, 'Ese correo es de uso interno: la cuenta la crea la administración.')
-    }
-    // La universidad del dominio o, si no hay, "Invitados" (si la administración la tiene activa)
-    const { rows: inst } = await c.query('SELECT institucion_para_registro($1) AS id', [correoN])
-    if (!inst[0].id) throw new ErrorHttp(400, 'Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
     if (!d.consentimiento) throw new ErrorHttp(400, 'Debes aceptar el aviso de privacidad para continuar.')
     validarPassword(d.password)
-    const existe = await c.query('SELECT 1 FROM usuario WHERE correo = $1', [correoN])
-    if (existe.rowCount) throw new ErrorHttp(409, 'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña.')
-    const { rows } = await c.query(
-      `INSERT INTO usuario (campus_id, nombre, correo, facultad, password_hash, consentimiento_privacidad, institucion_id)
-       VALUES (1, $1, $2, $3, crypt($4, gen_salt('bf')), true, $5) RETURNING id, nombre, correo`,
-      [d.nombre.trim(), correoN, d.facultad, d.password, inst[0].id],
-    )
-    const u = rows[0]
-    const token = await crearToken(c, u.id, 'verificacion', 24 * 60)
-    await correo(c, correoN, 'Verifica tu cuenta de EcoSmart AI', `Hola ${u.nombre}, confirma tu correo para empezar a reciclar. El enlace vence en 24 horas y solo puede usarse una vez.`, `#/verificar?token=${token}`)
-    await auditar(c, u.id, 'Registrar cuenta', u.id, correoN)
-    return { usuario: { id: u.id, nombre: u.nombre, correo: u.correo } }
+    const { rows: previa } = await c.query('SELECT id, verificado FROM usuario WHERE correo = $1', [correoN])
+    const interno = (await c.query('SELECT es_correo_interno($1) AS si', [correoN])).rows[0].si as boolean
+    let id: string
+    if (interno) {
+      if (!previa[0]) throw new ErrorHttp(400, 'Ese correo aún no existe: pídele a la administración que lo cree.')
+      if (previa[0].verificado) throw new ErrorHttp(409, 'Esta cuenta ya está registrada. Inicia sesión o recupera tu contraseña.')
+      id = previa[0].id
+      await c.query(
+        `UPDATE usuario SET nombre = $2, facultad = COALESCE(NULLIF($3, ''), facultad), password_hash = crypt($4, gen_salt('bf')),
+                verificado = true, consentimiento_privacidad = true, intentos_fallidos = 0, bloqueo_temporal_hasta = NULL WHERE id = $1`,
+        [id, nombre, String(d.facultad ?? '').trim(), d.password],
+      )
+      await auditar(c, id, 'Activar cuenta interna', id, correoN)
+    } else {
+      if (previa[0]) throw new ErrorHttp(409, 'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña.')
+      // La universidad del dominio o, si no hay, "Invitados" (si la administración la tiene activa)
+      const { rows: inst } = await c.query('SELECT institucion_para_registro($1) AS id', [correoN])
+      if (!inst[0].id) throw new ErrorHttp(400, 'Usa el correo de una universidad participante. Si tu universidad no aparece, pide al administrador que la agregue.')
+      const { rows } = await c.query(
+        `INSERT INTO usuario (campus_id, nombre, correo, facultad, password_hash, verificado, consentimiento_privacidad, institucion_id)
+         VALUES (1, $1, $2, $3, crypt($4, gen_salt('bf')), true, true, $5) RETURNING id`,
+        [nombre, correoN, d.facultad, d.password, inst[0].id],
+      )
+      id = rows[0].id
+      await auditar(c, id, 'Registrar cuenta', id, correoN)
+    }
+    return { usuario: { id, nombre, correo: correoN }, sesion: await abrirSesion(c, id) }
   })
 }
 
-export function reenviarVerificacion(correoIn: string) {
-  return enTransaccion(async (c) => {
-    const { rows } = await c.query('SELECT id, correo FROM usuario WHERE correo = $1 AND NOT verificado', [String(correoIn ?? '').trim()])
-    if (!rows[0]) return {}
-    const token = await crearToken(c, rows[0].id, 'verificacion', 24 * 60)
-    await correo(c, rows[0].correo, 'Nuevo enlace de verificación', 'Usa este enlace para verificar tu cuenta.', `#/verificar?token=${token}`)
-    return {}
-  })
+// Ya no se verifica el correo al registrarse (las cuentas quedan listas al crearlas). Se conserva
+// la ruta para enlaces antiguos, pero no envía nada: así no puede "verificarse" una cuenta interna
+// pendiente que aún no tiene contraseña.
+export async function reenviarVerificacion(_correo: string) {
+  void _correo
+  return {}
 }
 
 export function verificarCorreo(token: string) {
@@ -147,19 +156,12 @@ export function verificarCorreo(token: string) {
   })
 }
 
-/** ¿Este navegador ya pasó el segundo factor de esta cuenta en los últimos 30 días? (RNF13) */
-async function equipoDeConfianza(c: PoolClient, usuarioId: string, equipo: unknown) {
-  if (typeof equipo !== 'string' || equipo.length < 20 || equipo.length > 200) return false
-  const { rowCount } = await c.query('UPDATE equipo_confianza SET usado_en = now() WHERE token_hash = $1 AND usuario_id = $2 AND vence_en > now()', [sha256(equipo), usuarioId])
-  return (rowCount ?? 0) > 0
-}
-
 /** Olvida los equipos de confianza de estas cuentas (cambio de contraseña, de rol o bloqueo). */
 export async function olvidarEquipos(c: PoolClient, usuarioIds: string[]) {
   if (usuarioIds.length) await c.query('DELETE FROM equipo_confianza WHERE usuario_id = ANY($1::uuid[])', [usuarioIds])
 }
 
-export function iniciarSesion(correoIn: string, password: string, equipo?: unknown) {
+export function iniciarSesion(correoIn: string, password: string) {
   return enTransaccion(async (c) => {
     const { rows } = await c.query(
       `SELECT id, correo, rol, verificado, bloqueado, intentos_fallidos,
@@ -170,6 +172,10 @@ export function iniciarSesion(correoIn: string, password: string, equipo?: unkno
     )
     const u = rows[0]
     if (!u) throw new ErrorHttp(401, 'Correo o contraseña incorrectos.')
+    // Cuenta interna creada por la administración que la persona aún no registró
+    if (!u.verificado && (await c.query('SELECT es_correo_interno($1) AS si', [u.correo])).rows[0].si) {
+      throw new ErrorHttp(403, 'Esta cuenta aún no está registrada: entra a "Regístrate" con este correo y crea tu contraseña.')
+    }
     if (u.temporal) throw new ErrorHttp(423, `Cuenta bloqueada temporalmente por intentos fallidos. Intenta en ${u.minutos} min.`)
     if (!u.clave_ok) {
       // Cinco intentos fallidos bloquean la cuenta 15 minutos (RNF13)
@@ -182,42 +188,13 @@ export function iniciarSesion(correoIn: string, password: string, equipo?: unkno
       return { error: 'Correo o contraseña incorrectos.' }
     }
     if (u.bloqueado) throw new ErrorHttp(403, 'Tu cuenta está bloqueada. Comunícate con el administrador.')
-    if (!u.verificado) throw new ErrorHttp(403, 'Verifica tu correo institucional antes de iniciar sesión.')
-    await c.query('UPDATE usuario SET intentos_fallidos = 0, bloqueo_temporal_hasta = NULL WHERE id = $1', [u.id])
-    if (u.rol === 'admin' || u.rol === 'aliado') {
-      // Segundo factor solo la primera vez en cada equipo (RNF13)
-      if (await equipoDeConfianza(c, u.id, equipo)) {
-        await auditar(c, u.id, 'Inicio de sesión desde equipo de confianza', u.id)
-        return { tipo: 'ok', sesion: await abrirSesion(c, u.id) }
-      }
-      const codigo = codigoSeisDigitos()
-      await crearToken(c, u.id, 'segundo_factor', 10, codigo)
-      // Cuentas internas y de demostración no tienen buzón: el código llega al correo del proyecto
-      const alProyecto = (await c.query("SELECT es_correo_interno($1) OR $1::text LIKE '%@universidad.edu.ec' AS si", [u.correo])).rows[0].si as boolean
-      await correo(c, u.correo, 'Código de acceso EcoSmart AI', `Tu código de segundo factor es ${codigo}. Vence en 10 minutos.`)
-      return { tipo: 'segundo_factor', usuarioId: u.id, alProyecto }
-    }
+    // Sin códigos al entrar: el único código es el de cambiar la contraseña (decisión del equipo)
+    await c.query('UPDATE usuario SET intentos_fallidos = 0, bloqueo_temporal_hasta = NULL, verificado = true WHERE id = $1', [u.id])
     return { tipo: 'ok', sesion: await abrirSesion(c, u.id) }
   }).then((r) => {
     // El conteo de intentos se guarda aunque el inicio de sesión falle
     if ('error' in r && r.error) throw new ErrorHttp(401, r.error)
     return r
-  })
-}
-
-export function verificarSegundoFactor(usuarioId: string, codigo: string, agente?: string) {
-  return enTransaccion(async (c) => {
-    await consumirToken(c, String(codigo ?? '').trim(), 'segundo_factor', String(usuarioId ?? ''))
-    // El navegador queda recordado: no vuelve a pedir el código en 30 días
-    const equipo = tokenAleatorio(32)
-    await c.query(`INSERT INTO equipo_confianza (usuario_id, token_hash, agente, vence_en) VALUES ($1, $2, $3, now() + make_interval(days => $4))`, [
-      usuarioId,
-      sha256(equipo),
-      String(agente ?? '').slice(0, 200) || null,
-      DIAS_EQUIPO_CONFIANZA,
-    ])
-    await auditar(c, usuarioId, 'Inicio de sesión con segundo factor', usuarioId, `Equipo recordado ${DIAS_EQUIPO_CONFIANZA} días`)
-    return { sesion: await abrirSesion(c, usuarioId), equipo }
   })
 }
 
@@ -249,7 +226,8 @@ export function restablecerPassword(correoIn: string, codigo: string, password: 
     const { rows } = await c.query('SELECT id FROM usuario WHERE correo = $1', [String(correoIn ?? '').trim()])
     if (!rows[0]) throw new ErrorHttp(400, 'El enlace o código no es válido o ya fue utilizado.')
     const id = await consumirToken(c, String(codigo ?? '').trim(), 'restablecer', rows[0].id)
-    await c.query("UPDATE usuario SET password_hash = crypt($2, gen_salt('bf')), sesion_version = sesion_version + 1, intentos_fallidos = 0, bloqueo_temporal_hasta = NULL WHERE id = $1", [id, password])
+    // Con la contraseña nueva la cuenta queda lista (también una cuenta interna aún sin registrar)
+    await c.query("UPDATE usuario SET password_hash = crypt($2, gen_salt('bf')), sesion_version = sesion_version + 1, intentos_fallidos = 0, bloqueo_temporal_hasta = NULL, verificado = true WHERE id = $1", [id, password])
     await c.query('DELETE FROM sesion WHERE usuario_id = $1', [id])
     await olvidarEquipos(c, [id]) // con la contraseña nueva, cada equipo vuelve a pedir el código
     await auditar(c, id, 'Restablecer contraseña', id, 'Sesiones y equipos de confianza revocados')
@@ -319,15 +297,7 @@ export function guardarDominiosInternos(adminId: string, datos: unknown) {
   })
 }
 
-// Contraseña inicial: 12 caracteres sin letras confusas (0/O, 1/l/I), con letras y números
-function claveInicial() {
-  const t = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let clave = ''
-  while (!/[A-Za-z]/.test(clave) || !/\d/.test(clave)) clave = Array.from({ length: 12 }, () => t[randomInt(t.length)]).join('')
-  return clave
-}
-
-/** Crea una cuenta con el dominio interno del rol. Devuelve el correo y la contraseña inicial (se muestra una sola vez). */
+/** Reserva una cuenta con el dominio interno del rol. La persona la activa en "Regístrate" con su propia contraseña. */
 export function crearCuentaInterna(adminId: string, datos: unknown) {
   return enTransaccion(async (c) => {
     await exigirAdmin(c, adminId)
@@ -336,7 +306,7 @@ export function crearCuentaInterna(adminId: string, datos: unknown) {
     const usuario = String(d.usuario ?? '').trim().toLowerCase()
     const rol = String(d.rol ?? '') as RolInterno
     const facultad = String(d.facultad ?? '').trim().slice(0, 120)
-    if (!nombre || nombre.length > 120) throw new ErrorHttp(400, 'Escribe el nombre de la persona.')
+    if (nombre.length > 120) throw new ErrorHttp(400, 'El nombre es demasiado largo.')
     if (!/^[a-z0-9]([a-z0-9._-]{0,38}[a-z0-9])?$/.test(usuario)) throw new ErrorHttp(400, 'El usuario solo puede tener letras, números, punto, guion o guion bajo (sin espacios ni tildes), por ejemplo: juan.perez')
     if (!ROLES.includes(rol)) throw new ErrorHttp(400, 'Elige un rol válido.')
     const { rows: dom } = await c.query('SELECT dominio::text AS dominio FROM dominio_interno WHERE rol = $1', [rol])
@@ -345,13 +315,13 @@ export function crearCuentaInterna(adminId: string, datos: unknown) {
     if ((await c.query('SELECT 1 FROM usuario WHERE correo = $1', [correo])).rowCount) throw new ErrorHttp(409, `Ya existe la cuenta ${correo}.`)
     const institucionId = String(d.institucionId ?? '') || 'inst-invitados'
     if (!(await c.query('SELECT 1 FROM institucion WHERE id = $1', [institucionId])).rowCount) throw new ErrorHttp(400, 'Universidad no encontrada.')
-    const password = claveInicial()
+    // Sin contraseña conocida: queda pendiente hasta que la persona se registre con este correo
     const { rows } = await c.query(
       `INSERT INTO usuario (campus_id, nombre, correo, facultad, rol, password_hash, verificado, consentimiento_privacidad, institucion_id)
-       VALUES (1, $1, $2, $3, $4, crypt($5, gen_salt('bf')), true, true, $6) RETURNING id`,
-      [nombre, correo, facultad || 'EcoSmart AI', rol, password, institucionId],
+       VALUES (1, $1, $2, $3, $4, crypt($5, gen_salt('bf')), false, false, $6) RETURNING id`,
+      [nombre || usuario, correo, facultad || 'EcoSmart AI', rol, tokenAleatorio(24), institucionId],
     )
-    await auditar(c, adminId, 'Crear cuenta interna', rows[0].id, `${correo} (${rol})`)
-    return { correo, password, usuarioId: rows[0].id as string }
+    await auditar(c, adminId, 'Crear cuenta interna', rows[0].id, `${correo} (${rol}), pendiente de registro`)
+    return { correo, usuarioId: rows[0].id as string }
   })
 }
