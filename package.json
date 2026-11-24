@@ -19,7 +19,9 @@
     "db:migrar": "tsx --env-file=server/.env server/migrar.ts",
     "ia:embeddings": "tsx scripts/generar-embeddings-ia.ts",
     "ia:evaluar": "tsx scripts/evaluar-ia.ts",
-    "ia:entrenar": "tsx scripts/entrenar-ia.ts"
+    "ia:entrenar": "tsx scripts/entrenar-ia.ts",
+    "start": "tsx server/migrar.ts && tsx server/index.ts",
+    "nube:claves": "node scripts/claves-nube.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
@@ -32,6 +34,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
@@ -48,9 +51,11 @@
     "@vitejs/plugin-react": "^6.1.2",
     "axe-core": "^4.14.0",
     "oxlint": "^1.90.0",
-    "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

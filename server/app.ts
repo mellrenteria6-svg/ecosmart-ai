@@ -35,7 +35,8 @@ const FORZAR_HTTPS = process.env.FORZAR_HTTPS === '1'
 
 // Cabeceras de seguridad (RNF04)
 app.use((req, res, next) => {
-  if (FORZAR_HTTPS && !req.secure) {
+  // La revisión de salud del alojamiento llega por dentro, sin HTTPS: no se redirige
+  if (FORZAR_HTTPS && !req.secure && req.path !== '/api/salud') {
     // Todo acceso usa HTTPS: lo que llegue por HTTP se redirige (308 conserva el método y el cuerpo)
     return void res.redirect(308, `https://${req.headers.host ?? 'localhost'}${req.originalUrl}`)
   }

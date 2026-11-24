@@ -1,0 +1,44 @@
+# Publicación en Render (plan gratis). En Render: New > Blueprint > este repositorio.
+# Los valores con "sync: false" los pega cada quien en Render (claves): nunca van al repositorio.
+# Guía paso a paso: docs/publicar.md
+services:
+  - type: web
+    name: ecosmart-ai
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci --include=dev && npm run build:bd
+    # Prepara la base (esquema y migraciones) y arranca la API, que también entrega la página
+    startCommand: npm start
+    healthCheckPath: /api/salud
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATABASE_URL # dirección de conexión de Neon
+        sync: false
+      - key: URL_PUBLICA # la dirección que Render le da a la página, terminada en /
+        sync: false
+      - key: FORZAR_HTTPS
+        value: "1"
+      - key: CONFIAR_PROXY
+        value: "1"
+      - key: BLOQUEAR_DEMO # las cuentas de demostración tienen la clave publicada en GitHub
+        value: "1"
+      - key: BANDEJA_DEMO
+        value: "0"
+      - key: PG_POOL_MAX
+        value: "5"
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PUERTO
+        value: "587"
+      - key: SMTP_USUARIO # Login SMTP de Brevo (termina en @smtp-brevo.com)
+        sync: false
+      - key: SMTP_CLAVE # clave SMTP de Brevo
+        sync: false
+      - key: CORREO_REMITENTE # por ejemplo: EcoSmart AI <ecosmartia@gmail.com>
+        sync: false
+      - key: VAPID_PUBLICA # claves de los avisos push: npm run nube:claves
+        sync: false
+      - key: VAPID_PRIVADA
+        sync: false

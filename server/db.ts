@@ -24,8 +24,12 @@ pg.types.setTypeParser(1700, (v) => parseFloat(v)) // NUMERIC
 pg.types.setTypeParser(20, (v) => parseInt(v, 10)) // BIGINT
 pg.types.setTypeParser(1082, (v) => v) // DATE como 'YYYY-MM-DD'
 
-// Usa PGHOST, PGPORT, PGDATABASE, PGUSER y PGPASSWORD del archivo server/.env
-export const pool = new pg.Pool({ max: Number(process.env.PG_POOL_MAX ?? 10) })
+// En la PC: PGHOST, PGPORT, PGDATABASE, PGUSER y PGPASSWORD de server/.env.
+// En la nube (Neon, Render…): una sola dirección DATABASE_URL, que ya incluye la conexión cifrada.
+export const pool = new pg.Pool({
+  max: Number(process.env.PG_POOL_MAX ?? 10),
+  ...(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {}),
+})
 
 type Fila = Record<string, unknown>
 const ms = (v: unknown) => (v instanceof Date ? v.getTime() : v == null ? undefined : new Date(v as string).getTime())

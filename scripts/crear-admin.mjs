@@ -38,7 +38,8 @@ const TODOS = LETRAS + NUMEROS
 let clave = ''
 while (!/[A-Za-z]/.test(clave) || !/\d/.test(clave)) clave = Array.from({ length: 16 }, () => TODOS[randomInt(TODOS.length)]).join('')
 
-const c = new pg.Client()
+// En la PC usa server/.env; para la base de la nube, la dirección DATABASE_URL
+const c = new pg.Client(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : undefined)
 await c.connect()
 let creada = false
 try {
@@ -78,12 +79,13 @@ try {
 
 // Carpeta privada: fuera del proyecto (no va a GitHub) y fuera de OneDrive (no se sube a la nube)
 const carpeta = process.env.ECOSMART_PRIVADO ?? path.join(os.homedir(), 'EcoSmart-privado')
-const archivo = path.join(carpeta, 'administrador.txt')
+// La cuenta de la nube se guarda aparte para no pisar la de la PC
+const archivo = path.join(carpeta, process.env.DATABASE_URL ? 'administrador-nube.txt' : 'administrador.txt')
 mkdirSync(carpeta, { recursive: true })
 writeFileSync(
   archivo,
   [
-    'EcoSmart AI - Cuenta de administracion',
+    `EcoSmart AI - Cuenta de administracion (${process.env.DATABASE_URL ? 'pagina publicada en internet' : 'base de datos de esta PC'})`,
     '',
     `Correo:     ${correo}`,
     `Contrasena: ${clave}`,

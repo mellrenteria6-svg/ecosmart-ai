@@ -1,7 +1,8 @@
 // Servidor de EcoSmart AI: arranca la API sobre PostgreSQL (configuración en server/.env).
 import { app, pool } from './app'
 
-const PUERTO = Number(process.env.PUERTO ?? 3001)
+// PORT lo fija el servicio de alojamiento (Render); PUERTO, server/.env en la PC
+const PUERTO = Number(process.env.PUERTO ?? process.env.PORT ?? 3001)
 
 app.listen(PUERTO, async () => {
   try {
