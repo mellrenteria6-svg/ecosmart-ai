@@ -1,5 +1,5 @@
 import { desactivar as desactivarAvisos } from '../lib/push'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { alternarOfflineSimulado, cerrarSesion, useStore } from '../data/store'
 import type { Rol, Usuario } from '../data/types'
@@ -7,16 +7,17 @@ import { ETIQUETA_ROL } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
 import { useCorreoReal } from '../lib/correo-real'
 
-const MENU: Record<Rol, { href: string; texto: string }[]> = {
+// "mas": va dentro del botón "Más" en escritorio para que el menú quepa; en el celular se ven todas
+const MENU: Record<Rol, { href: string; texto: string; mas?: boolean }[]> = {
   usuario: [
     { href: '#/app', texto: 'Inicio' },
     { href: '#/app/reciclar', texto: 'Reciclar' },
     { href: '#/app/puntos', texto: 'Puntos' },
-    { href: '#/app/historial', texto: 'Historial' },
     { href: '#/app/recompensas', texto: 'Recompensas' },
     { href: '#/app/canjes', texto: 'Mis canjes' },
-    { href: '#/app/ranking', texto: 'EcoRanking' },
-    { href: '#/app/impacto', texto: 'Mi impacto' },
+    { href: '#/app/historial', texto: 'Historial', mas: true },
+    { href: '#/app/ranking', texto: 'EcoRanking', mas: true },
+    { href: '#/app/impacto', texto: 'Mi impacto', mas: true },
   ],
   recolector: [
     { href: '#/rec', texto: 'Mis puntos' },
@@ -24,15 +25,15 @@ const MENU: Record<Rol, { href: string; texto: string }[]> = {
   ],
   admin: [
     { href: '#/admin', texto: 'Dashboard' },
+    { href: '#/admin/usuarios', texto: 'Usuarios' },
     { href: '#/admin/puntos', texto: 'Puntos y QR' },
-    { href: '#/admin/categorias', texto: 'Categorías' },
     { href: '#/admin/recompensas', texto: 'Recompensas' },
     { href: '#/admin/entregas', texto: 'Entregas' },
-    { href: '#/admin/reportes', texto: 'Reportes' },
-    { href: '#/admin/alertas', texto: 'Alertas' },
-    { href: '#/admin/usuarios', texto: 'Usuarios' },
-    { href: '#/admin/instituciones', texto: 'Universidades' },
-    { href: '#/admin/auditoria', texto: 'Auditoría' },
+    { href: '#/admin/reportes', texto: 'Reportes', mas: true },
+    { href: '#/admin/categorias', texto: 'Categorías', mas: true },
+    { href: '#/admin/alertas', texto: 'Alertas', mas: true },
+    { href: '#/admin/instituciones', texto: 'Universidades', mas: true },
+    { href: '#/admin/auditoria', texto: 'Auditoría', mas: true },
   ],
   aliado: [
     { href: '#/aliado', texto: 'Resumen' },
@@ -77,13 +78,28 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
   const ruta = useRuta()
   const correoReal = useCorreoReal()
   const [menuAbierto, setMenuAbierto] = useState(false)
-  // Escape cierra el menú del celular (RNF08)
+  const [masAbierto, setMasAbierto] = useState(false)
+  const masRef = useRef<HTMLDivElement>(null)
+  // Escape cierra el menú del celular y el desplegable "Más" (RNF08)
   useEffect(() => {
-    if (!menuAbierto) return
-    const alPresionar = (e: KeyboardEvent) => e.key === 'Escape' && setMenuAbierto(false)
+    if (!menuAbierto && !masAbierto) return
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (masAbierto) masRef.current?.querySelector('button')?.focus()
+      setMenuAbierto(false)
+      setMasAbierto(false)
+    }
+    // Un clic fuera del desplegable lo cierra
+    const alTocar = (e: MouseEvent) => {
+      if (masRef.current && !masRef.current.contains(e.target as Node)) setMasAbierto(false)
+    }
     window.addEventListener('keydown', alPresionar)
-    return () => window.removeEventListener('keydown', alPresionar)
-  }, [menuAbierto])
+    window.addEventListener('mousedown', alTocar)
+    return () => {
+      window.removeEventListener('keydown', alPresionar)
+      window.removeEventListener('mousedown', alTocar)
+    }
+  }, [menuAbierto, masAbierto])
   const items = MENU[usuario.rol]
   const actual = '#' + ruta.path
   const activo = (href: string) => {
@@ -91,6 +107,23 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
     if (href === base) return actual === base
     return actual === href || actual.startsWith(href + '/')
   }
+  const principales = items.filter((i) => !i.mas)
+  const secundarios = items.filter((i) => i.mas)
+  const secundarioActivo = secundarios.find((i) => activo(i.href))
+  const enlace = (i: (typeof items)[number]) => (
+    <a
+      key={i.href}
+      href={i.href}
+      className={activo(i.href) ? 'activo' : ''}
+      aria-current={activo(i.href) ? 'page' : undefined}
+      onClick={() => {
+        setMenuAbierto(false)
+        setMasAbierto(false)
+      }}
+    >
+      {i.texto}
+    </a>
+  )
   const noLeidas = s.db.notificaciones.filter((n) => n.usuarioId === usuario.id && !n.leida).length
   const salir = async () => {
     // Este dispositivo deja de recibir avisos de la cuenta que cierra sesión
@@ -108,11 +141,23 @@ export function Shell({ usuario, children }: { usuario: Usuario; children: React
         <div className="shell-header-inner">
           <Marca href={items[0].href} />
           <nav className={`shell-nav ${menuAbierto ? 'abierto' : ''}`} aria-label="Navegación principal">
-            {items.map((i) => (
-              <a key={i.href} href={i.href} className={activo(i.href) ? 'activo' : ''} aria-current={activo(i.href) ? 'page' : undefined} onClick={() => setMenuAbierto(false)}>
-                {i.texto}
-              </a>
-            ))}
+            {principales.map(enlace)}
+            {secundarios.length > 0 && (
+              <div className="nav-mas" ref={masRef}>
+                <button
+                  type="button"
+                  className={`nav-mas-boton ${secundarioActivo ? 'activo' : ''}`}
+                  aria-expanded={masAbierto}
+                  aria-controls="menu-mas"
+                  onClick={() => setMasAbierto((v) => !v)}
+                >
+                  {secundarioActivo?.texto ?? 'Más'} <span aria-hidden="true">▾</span>
+                </button>
+                <div id="menu-mas" className={`nav-mas-lista ${masAbierto ? 'abierta' : ''}`}>
+                  {secundarios.map(enlace)}
+                </div>
+              </div>
+            )}
             {/* En pantallas angostas "Salir" vive dentro del menú para que el encabezado quepa */}
             <button type="button" className="salir-movil" onClick={salir}>
               Salir
