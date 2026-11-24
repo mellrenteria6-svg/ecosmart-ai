@@ -170,6 +170,9 @@ export function Registro() {
   // Universidades con dominio propio; "Invitados" recibe cualquier otro correo si está activa
   const activas = db.instituciones.filter((i) => i.activa && i.dominios.length > 0)
   const invitados = db.instituciones.some((i) => i.id === INSTITUCION_INVITADOS && i.activa)
+  // "ESPOL, ECOTEC, UCSG o UEES" (la universidad de demostración no se anuncia)
+  const siglas = activas.filter((i) => i.id !== 'inst-demo').map((i) => i.siglas)
+  const listaUniversidades = siglas.length > 1 ? `${siglas.slice(0, -1).join(', ')} o ${siglas.at(-1)}` : siglas.join('')
   const detectada = f.correo.includes('@') ? institucionPorCorreo(db, f.correo) : undefined
   const dominioEscrito = f.correo.split('@')[1] ?? ''
 
@@ -202,7 +205,11 @@ export function Registro() {
   return (
     <MarcoAcceso
       titulo={<>Crea tu cuenta <em>verde</em>.</>}
-      subtitulo={invitados ? `Con cualquier correo. Si es de ${activas.map((i) => i.siglas).join(', ')}, quedas en tu universidad.` : `Con el correo de tu universidad: ${activas.map((i) => i.siglas).join(', ')}.`}
+      subtitulo={
+        invitados
+          ? `Usa cualquier correo. Si es el de tu universidad (${listaUniversidades}), tus puntos también suman para ella en el EcoRanking.`
+          : `Usa el correo de tu universidad: ${listaUniversidades}.`
+      }
     >
       <form onSubmit={enviar} className="form">
         {error && <Alerta tono="error">{error}</Alerta>}
