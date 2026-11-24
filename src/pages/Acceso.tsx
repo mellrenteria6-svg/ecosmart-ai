@@ -7,13 +7,11 @@ import {
   institucionPorCorreo,
   iniciarSesion,
   registrar,
-  restablecerDemo,
   restablecerPassword,
   solicitarRestablecimiento,
   useStore,
   verificarCorreo,
 } from '../data/store'
-import { DEMO_CUENTAS, DEMO_PASSWORD } from '../data/seed'
 import { Marca } from '../components/Shell'
 import { Alerta, Campo, EntradaContrasena, useAccion } from '../components/ui'
 import { hace } from '../lib/formato'
@@ -91,37 +89,6 @@ export function Ingresar() {
           ¿No tienes cuenta? <a href="#/registro">Regístrate</a>
         </p>
       </form>
-      {/* Las cuentas de demostración solo se muestran en el modo sin servidor (datos en el navegador) */}
-      {!MODO_SERVIDOR && <div className="demo-cuentas">
-        <p>
-          <b>Cuentas de demostración</b> · contraseña <code>{DEMO_PASSWORD}</code>
-        </p>
-        <div className="demo-botones">
-          {DEMO_CUENTAS.map((c) => (
-            <button
-              key={c.correo}
-              type="button"
-              className="demo-boton"
-              onClick={() => {
-                setCorreo(c.correo)
-                setPassword(DEMO_PASSWORD)
-              }}
-            >
-              <b>{c.rol}</b>
-              <small>{c.correo}</small>
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="enlace-boton"
-          onClick={() => {
-            if (confirm('¿Restablecer todos los datos de demostración? Se perderán los registros creados en este navegador.')) restablecerDemo()
-          }}
-        >
-          Restablecer datos de demostración
-        </button>
-      </div>}
     </MarcoAcceso>
   )
 }

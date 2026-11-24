@@ -14,7 +14,7 @@ import {
 import type { PuntoReciclaje, Reciclaje, Usuario } from '../data/types'
 import { Alerta, Campo, EstadoBadge, useAccion } from '../components/ui'
 import { ChipCategoria } from '../components/Visual'
-import { FotoInvalida, UMBRAL_NITIDEZ, canvasDesdeFuente, fotoDemostracion, procesarCanvas } from '../lib/imagen'
+import { FotoInvalida, UMBRAL_NITIDEZ, canvasDesdeFuente, procesarCanvas } from '../lib/imagen'
 import type { FotoProcesada } from '../lib/imagen'
 import { clasificar, precargarIa, useEstadoIa } from '../lib/ia'
 import type { ResultadoIa } from '../lib/ia'
@@ -177,7 +177,6 @@ export function Reciclar({ usuario }: { usuario: Usuario }) {
 }
 
 function PasoPunto({ codigoInicial, onPunto }: { codigoInicial: string; onPunto: (p: PuntoReciclaje) => void }) {
-  const { db } = useStore()
   const [codigo, setCodigo] = useState(codigoInicial)
   const [escaneando, setEscaneando] = useState(false)
   const { error, setError, ejecutar } = useAccion()
@@ -227,7 +226,6 @@ function PasoPunto({ codigoInicial, onPunto }: { codigoInicial: string; onPunto:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escaneando, lista])
 
-  const activos = db.puntos.filter((p) => p.visible && p.estado === 'activo')
 
   return (
     <div className="paso-cuerpo">
@@ -275,27 +273,14 @@ function PasoPunto({ codigoInicial, onPunto }: { codigoInicial: string; onPunto:
       </form>
       {error && <Alerta tono="error">{error}</Alerta>}
 
-      <details className="ayuda-demo">
-        <summary>Códigos de los puntos activos (demo)</summary>
-        <div className="chips">
-          {activos.map((p) => (
-            <button key={p.id} type="button" className="chip-boton" onClick={() => { setCodigo(p.codigoQr); validar(p.codigoQr) }}>
-              <span className="codigo-mono">{p.codigoQr}</span> {p.nombre}
-            </button>
-          ))}
-        </div>
-      </details>
     </div>
   )
 }
 
 function PasoFoto({ punto, onFoto, onVolver }: { punto: PuntoReciclaje; onFoto: (f: FotoProcesada) => void; onVolver: () => void }) {
   const { db } = useStore()
-  const [camara, setCamara] = useState(true)
-  const { videoRef, error: errorCam, lista } = useCamara(camara)
+  const { videoRef, error: errorCam, lista } = useCamara(true)
   const [error, setError] = useState<string | null>(null)
-  const [demoCat, setDemoCat] = useState(punto.categorias[0])
-  const variante = useRef(0)
 
   function usarCanvas(canvas: HTMLCanvasElement) {
     try {
@@ -342,34 +327,7 @@ function PasoFoto({ punto, onFoto, onVolver }: { punto: PuntoReciclaje; onFoto: 
       <p className="nota nota-centro">En la Fase 1 solo se aceptan fotos tomadas en este momento: la galería está deshabilitada.</p>
       {error && <Alerta tono="error">{error}</Alerta>}
 
-      <details className="ayuda-demo" open={!!errorCam}>
-        <summary>¿Sin cámara? Usa una foto de demostración</summary>
-        <div className="form form-linea">
-          <Campo etiqueta="Residuo de ejemplo">
-            {(id) => (
-              <select id={id} className="input" value={demoCat} onChange={(e) => setDemoCat(e.target.value)}>
-                {punto.categorias.map((cid) => (
-                  <option key={cid} value={cid}>
-                    {db.categorias.find((c) => c.id === cid)?.nombre}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Campo>
-          <button
-            type="button"
-            className="btn btn-linea"
-            onClick={() => {
-              const c = db.categorias.find((x) => x.id === demoCat)!
-              variante.current += 1
-              setCamara(false)
-              usarCanvas(fotoDemostracion(c, variante.current))
-            }}
-          >
-            Generar foto
-          </button>
-        </div>
-      </details>
+      {errorCam && <p className="nota nota-centro">Para reciclar hace falta una cámara: prueba desde tu celular.</p>}
     </div>
   )
 }

@@ -108,7 +108,7 @@ export function Portada() {
             <a className="btn btn-acento btn-lg" href="#/registro">
               Empezar a reciclar <span aria-hidden="true">→</span>
             </a>
-            <a className="btn btn-linea btn-lg" href="#/ingresar">Probar con cuenta demo</a>
+            <a className="btn btn-linea btn-lg" href="#/ingresar">Ya tengo cuenta</a>
           </div>
           <dl className="p-datos">
             <div>
@@ -310,9 +310,9 @@ export function Portada() {
         <h2>
           ¿Listo para tu <em>primer</em> reciclaje?
         </h2>
-        <p>Entra con una cuenta de demostración y recorre el flujo completo como estudiante, recolector o administrador.</p>
+        <p>Crea tu cuenta, escanea el QR de un punto, toma la foto y deja que la IA clasifique tu residuo.</p>
         <div className="p-hero-acciones">
-          <a className="btn btn-lima btn-lg" href="#/ingresar">Ingresar al prototipo</a>
+          <a className="btn btn-lima btn-lg" href="#/ingresar">Ingresar</a>
           <a className="btn btn-linea-clara btn-lg" href="#/registro">Crear mi cuenta</a>
         </div>
       </section>

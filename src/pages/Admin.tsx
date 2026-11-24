@@ -787,17 +787,6 @@ export function Entregas({ usuario }: { usuario: Usuario }) {
             ))}
           </ul>
         )}
-        <details className="ayuda-demo">
-          <summary>Códigos pendientes (demo)</summary>
-          <div className="chips">
-            {db.canjes.filter((c) => c.estado === 'pendiente' && mias.has(c.recompensaId)).map((c) => (
-              <button key={c.id} type="button" className="chip-boton" onClick={() => setCodigo(c.codigo)}>
-                <span className="codigo-mono">{c.codigo}</span>
-              </button>
-            ))}
-            {!db.canjes.some((c) => c.estado === 'pendiente' && mias.has(c.recompensaId)) && <small>No hay canjes pendientes.</small>}
-          </div>
-        </details>
       </section>
     </div>
   )
