@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # para que la publicación encuentre el paquete de la página
   pages: write
   id-token: write
 
