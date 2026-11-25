@@ -73,8 +73,29 @@ function obtenerWorker() {
       pendientes.delete(m.id)
     }
   }
-  worker.onerror = () => fijar({ fase: 'error', mensaje: 'No se pudo iniciar el modelo de IA.' })
+  worker.onerror = (e) => {
+    fijar({ fase: 'error', mensaje: e.message || 'No se pudo iniciar el motor de la IA en este navegador.' })
+    // El worker quedó inutilizable: se crea uno nuevo al reintentar
+    worker?.terminate()
+    worker = null
+  }
   return worker
+}
+
+/** Vuelve a intentar cargar el modelo (por ejemplo, tras perder la conexión a mitad de la descarga). */
+export function reintentarIa() {
+  if (estado.fase === 'cargando') return
+  fijar({ fase: 'inactivo' })
+  precargarIa()
+}
+
+/** Explicación en palabras simples del error de carga, para mostrarla a la persona. */
+export function explicarErrorIa(mensaje: string) {
+  const m = mensaje.toLowerCase()
+  if (/fetch|network|load failed|connection|timed? ?out|aborted.*download/.test(m)) return 'No se pudo descargar el modelo (≈ 90 MB). Revisa la conexión a internet y vuelve a intentar.'
+  if (/memory|out of memory|oom|allocation|abort\(/.test(m)) return 'El dispositivo no tuvo memoria suficiente para cargar el modelo. Cierra otras pestañas o apps y vuelve a intentar.'
+  if (/webassembly|wasm/.test(m)) return 'Este navegador no pudo ejecutar el motor de la IA. Prueba con Chrome actualizado.'
+  return 'No se pudo cargar el modelo de IA en este dispositivo.'
 }
 
 /** Empieza a descargar el modelo (≈ 90 MB la primera vez; luego queda en caché). */

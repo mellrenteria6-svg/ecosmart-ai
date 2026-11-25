@@ -16,7 +16,7 @@ import { Alerta, Campo, EstadoBadge, useAccion } from '../components/ui'
 import { ChipCategoria } from '../components/Visual'
 import { FotoInvalida, UMBRAL_NITIDEZ, canvasDesdeFuente, procesarCanvas } from '../lib/imagen'
 import type { FotoProcesada } from '../lib/imagen'
-import { clasificar, precargarIa, useEstadoIa } from '../lib/ia'
+import { clasificar, explicarErrorIa, precargarIa, reintentarIa, useEstadoIa } from '../lib/ia'
 import type { ResultadoIa } from '../lib/ia'
 import { ETIQUETA_COLA, fmtPct, hace } from '../lib/formato'
 import { navegar, useRuta } from '../lib/router'
@@ -90,6 +90,7 @@ export function Reciclar({ usuario }: { usuario: Usuario }) {
   const hoy = registrosHoy(s.db, usuario.id)
   const topeAlcanzado = hoy >= s.db.config.topeDiario
   const estadoIa = useEstadoIa()
+  const [verErrorIa, setVerErrorIa] = useState(false)
   useEffect(() => precargarIa(), [])
 
   const reiniciar = () => {
@@ -111,14 +112,27 @@ export function Reciclar({ usuario }: { usuario: Usuario }) {
           <h1 className="h-pagina">{['¿Dónde estás reciclando?', 'Fotografía el residuo', 'Revisa la clasificación', '¡Registro enviado!'][indice]}</h1>
         </div>
         <div className="reciclar-chips">
-          <span className={`chip-ia chip-ia-${estadoIa.fase}`} title="Estado del modelo de IA en este dispositivo">
-            {estadoIa.fase === 'listo' ? 'IA lista' : estadoIa.fase === 'cargando' ? `Descargando IA ${estadoIa.progreso} %` : estadoIa.fase === 'error' ? 'IA sin conexión' : 'IA'}
-          </span>
+          {estadoIa.fase === 'error' ? (
+            <button type="button" className="chip-ia chip-ia-error" aria-expanded={verErrorIa} onClick={() => setVerErrorIa((v) => !v)}>
+              IA sin conexión · ver por qué
+            </button>
+          ) : (
+            <span className={`chip-ia chip-ia-${estadoIa.fase}`} title="Estado del modelo de IA en este dispositivo">
+              {estadoIa.fase === 'listo' ? 'IA lista' : estadoIa.fase === 'cargando' ? `Descargando IA ${estadoIa.progreso} %` : 'IA'}
+            </span>
+          )}
           <span className="contador-dia" title="Registros de hoy / tope diario">
             {hoy}/{s.db.config.topeDiario} hoy
           </span>
         </div>
       </div>
+      {estadoIa.fase === 'error' && verErrorIa && (
+        <Alerta tono="warn">
+          {explicarErrorIa(estadoIa.mensaje)} Mientras tanto puedes registrar igual: se usa una estimación por color y el registro pasa a revisión.
+          <small className="error-tecnico">Detalle: {estadoIa.mensaje}</small>
+          <button type="button" className="btn btn-tinta btn-sm" onClick={() => { setVerErrorIa(false); reintentarIa() }}>Reintentar</button>
+        </Alerta>
+      )}
       <ol className="stepper" aria-label="Progreso">
         {PASOS.map((p, i) => (
           <li key={p.id} className={i < indice ? 'hecho' : i === indice ? 'actual' : ''} aria-current={i === indice ? 'step' : undefined}>

@@ -4751,3 +4751,15 @@ textarea.input {
 .input-tecnico {
   font-family: var(--font-mono);
 }
+/* Chip de IA con error: se puede tocar para ver el motivo y reintentar */
+button.chip-ia {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.error-tecnico {
+  display: block;
+  margin: 6px 0 8px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
